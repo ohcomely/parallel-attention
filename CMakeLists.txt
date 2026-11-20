@@ -1,0 +1,70 @@
+cmake_minimum_required(VERSION 3.20)
+project(parallel_attention LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+option(ATTN_GPU "Build the CUDA/cuBLAS path (not implemented yet)" OFF)
+set(ATTN_MPIEXEC_EXTRA "--oversubscribe" CACHE STRING "Extra mpiexec flags for tests")
+set(ATTN_TEST_RANKS 1 2 4 8 CACHE STRING "Rank counts used by ctest")
+
+find_package(MPI REQUIRED COMPONENTS CXX)
+
+if(APPLE)
+  find_library(ACCELERATE Accelerate REQUIRED)
+  set(BLAS_LIBS ${ACCELERATE})
+  set(BLAS_DEFS ATTN_ACCELERATE ACCELERATE_NEW_LAPACK)
+  set(BLAS_NAME Accelerate)
+else()
+  set(BLA_VENDOR OpenBLAS)
+  find_package(BLAS REQUIRED)
+  set(BLAS_LIBS ${BLAS_LIBRARIES})
+  set(BLAS_NAME OpenBLAS)
+endif()
+
+add_library(attn
+  src/rng.cpp
+  src/grid.cpp
+  src/layout.cpp
+  src/kernels_cpu.cpp
+  src/comm.cpp
+  src/timers.cpp
+  src/reference.cpp
+  src/steps.cpp
+  src/alg_3d.cpp
+  src/alg_split.cpp
+  src/alg_ring.cpp
+  src/algorithm.cpp
+  src/bench.cpp
+  src/costmodel.cpp
+  src/stats.cpp)
+target_include_directories(attn PUBLIC include PRIVATE src)
+target_link_libraries(attn PUBLIC MPI::MPI_CXX ${BLAS_LIBS})
+target_compile_definitions(attn PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
+target_compile_options(attn PRIVATE -Wall -Wextra)
+
+add_executable(attnbench src/main_bench.cpp)
+target_link_libraries(attnbench PRIVATE attn)
+
+enable_testing()
+add_executable(test_costmodel tests/test_costmodel.cpp)
+target_link_libraries(test_costmodel PRIVATE attn)
+add_test(NAME test_costmodel COMMAND test_costmodel)
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  add_test(NAME test_tools COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_tools.py)
+endif()
+
+foreach(test test_correctness test_words test_timers)
+  add_executable(${test} tests/${test}.cpp)
+  target_link_libraries(${test} PRIVATE attn)
+  foreach(np ${ATTN_TEST_RANKS})
+    add_test(NAME ${test}_np${np}
+             COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${ATTN_MPIEXEC_EXTRA} $<TARGET_FILE:${test}>)
+  endforeach()
+endforeach()
