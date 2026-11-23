@@ -70,3 +70,10 @@ Testing/
 # Python
 .venv/
 __pycache__/
+
+# Local docs and notes (not tracked)
+*.md
+explain/
+figures/
+.DS_Store
+.vscode/
