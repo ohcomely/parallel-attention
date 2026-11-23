@@ -1,6 +1,7 @@
 #!/bin/bash
 # One allocation of a Merlin7 CPU experiment: 8 EPYC 7742 nodes x 16 ranks x 8 cores (P up to 128).
 #     sbatch experiments/merlin_cpu.sbatch SPEC [JOB]      (JOB = which of the spec's `jobs` to run; default all)
+#     sbatch --array=1-4%1 experiments/merlin_cpu.sbatch SPEC   (one allocation per job, one after another)
 # Submit from the repository root after building (cmake -S . -B build && cmake --build build -j).
 #SBATCH --cluster=merlin7
 #SBATCH --partition=hourly
@@ -21,5 +22,6 @@ module load gcc/14.3.0 openmpi/5.0.10 OpenBLAS/0.3.30 Python/3.12.9   # same mod
 # export FI_PROVIDER=lnx FI_LNX_PROV_LINKS="shm+cxi:cxi0"
 
 spec=${1:?usage: sbatch experiments/merlin_cpu.sbatch SPEC [JOB]}
-job=${2:+--job $2}
-python3 experiments/run.py "$spec" $job
+job=${2:-${SLURM_ARRAY_TASK_ID:-}}
+job=${job:+--job $job}
+python3 -u experiments/run.py "$spec" $job   # -u: unbuffered, so the .out file fills as runs finish

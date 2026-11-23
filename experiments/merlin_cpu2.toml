@@ -1,0 +1,36 @@
+# Merlin7 CPU, second round. Changes from merlin_cpu (see figures/merlin_cpu):
+#  * exactly 16 ranks per node at every P (srun --nodes = P / 16), so P = 16 is one full node and P = 128 eight;
+#    merlin_cpu let srun spread ranks over all 8 nodes (1, 2, 4, 8, 16 ranks per node for P = 8 ... 128).
+#  * 4 allocations instead of 2: allocations differed by up to 25% in comm time.
+#  * T sweep for Split at P = 64, 128 (T = 4 removed idle time but added ~20% compute).
+# Submit all four allocations, one after another (each ~15 min on 8 nodes of `hourly`):
+#     sbatch --array=1-4%1 experiments/merlin_cpu.sbatch experiments/merlin_cpu2.toml
+name = "merlin_cpu2"
+jobs = 4
+shuffle = true
+ranks_per_node = 16
+launcher = ["srun", "--mpi=pmix", "--nodes={nodes}", "--ntasks={P}", "--ntasks-per-node=16", "--cpus-per-task=8",
+            "--hint=nomultithread", "--cpu-bind=cores"]
+env = { OPENBLAS_NUM_THREADS = "8", OMP_NUM_THREADS = "8" }
+
+[defaults]
+n = 16384
+d = 8192
+warmup = 3
+reps = 20
+max_reps = 50
+ci_target = 0.05
+
+[[run]]
+alg = ["ring", "2d", "3d"]
+P = [16, 32, 64, 128]
+
+[[run]]
+alg = "split"
+P = [16, 32]
+T = [1, 4]
+
+[[run]]
+alg = "split"
+P = [64, 128]
+T = [1, 2, 4, 8]

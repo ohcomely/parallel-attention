@@ -32,11 +32,14 @@ ROOT = Path(__file__).resolve().parent.parent
 ALG_STYLE = {  # key: (label, color, linestyle, marker, filled)
     ("2d", 1): ("2D", "#2a78d6", "-", "o", True),
     ("3d", 1): ("3D", "#eb6834", "-", "s", True),
+    ("split", 8): ("Split T=8", "#1baf7a", "-.", "D", True),
     ("split", 4): ("Split T=4", "#1baf7a", "-", "D", True),
+    ("split", 2): ("Split T=2", "#1baf7a", ":", "D", False),
     ("split", 1): ("Split T=1", "#1baf7a", "--", "D", False),
     ("ring", 1): ("Ring", "#c98500", "-", "^", True),
 }
 ORDER = list(ALG_STYLE)
+NON_2D = [k for k in ORDER if k[0] not in ("2d", "ring")]  # compared against 2D in comm_words.png
 COMPONENT_STYLE = {"compute": ("compute", "#b9b8b2"), "comm": ("communication", "#6250d6"),
                    "idle": ("idle (wait for S, tail)", "#e87ba4")}
 INK, INK2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
@@ -175,12 +178,12 @@ def fig_breakdown(S, title, path):
 
 def fig_comm_words(S, title, path):
     """Per P: predicted words and measured comm time of 3D / Split, both relative to 2D. Ring: see bandwidth.png."""
-    Ps = [p for p in sorted({k[2] for k in S}) if ("2d", 1, p) in S and any((a, t, p) in S for a, t in ORDER[1:4])]
+    Ps = [p for p in sorted({k[2] for k in S}) if ("2d", 1, p) in S and any((a, t, p) in S for a, t in NON_2D)]
     fig, axes = plt.subplots(1, len(Ps), figsize=(2.6 * len(Ps) + 1, 4.2), sharey=True)
     w = 0.38
     top = 0
     for ax, P in zip(axes, Ps):
-        ks = [k for k in ORDER[1:4] if (*k, P) in S]
+        ks = [k for k in NON_2D if (*k, P) in S]
         base = S[("2d", 1, P)]
         for i, k in enumerate(ks):
             s = S[(*k, P)]

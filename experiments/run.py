@@ -10,7 +10,8 @@ A spec has top-level settings, a [defaults] table and one or more [[run]] tables
     name     = "e1_strong"                 # output directory results/<name>/ unless --out is given
     jobs     = 2                           # independent repetitions of the whole experiment (allocations)
     shuffle  = true                        # randomise the order of P values and of runs within each P
-    launcher = ["mpirun", "-np", "{P}"]    # command prefix; {P} is replaced by the rank count
+    launcher = ["mpirun", "-np", "{P}"]    # command prefix; {P} = rank count, {nodes} = ceil(P / ranks_per_node)
+    ranks_per_node = 16                     # only needed when the launcher uses {nodes}
     env      = { VECLIB_MAXIMUM_THREADS = "1" }
 
     [defaults]                              # applies to every run
@@ -27,6 +28,7 @@ go into a single `attnbench --batch` call. Each job's rows are labelled <name>-<
 """
 import argparse
 import itertools
+import math
 import os
 import random
 import shlex
@@ -41,7 +43,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TOP_LEVEL = {"name", "jobs", "shuffle", "launcher", "env", "defaults", "run"}
+TOP_LEVEL = {"name", "jobs", "shuffle", "launcher", "ranks_per_node", "env", "defaults", "run"}
 
 
 def expand(spec):
@@ -94,6 +96,8 @@ def main():
     name = spec.get("name", a.spec.stem)
     jobs = spec.get("jobs", 1)
     launcher = spec.get("launcher", ["mpirun", "-np", "{P}"])
+    rpn = spec.get("ranks_per_node")
+    require(rpn or not any("{nodes}" in part for part in launcher), "launcher uses {nodes}: set ranks_per_node")
     out_dir = (a.out or ROOT / "results" / name).resolve()
     require(a.job is None or 1 <= a.job <= jobs, f"--job must be in 1 .. {jobs}")
     runs = expand(spec)
@@ -127,7 +131,8 @@ def main():
         for P in order:
             batch = batch_dir / f"job{job}_P{P}.txt"
             lines = [shlex.join(options(run, out_dir, job)) for run in by_P[P]]
-            cmd = [part.replace("{P}", str(P)) for part in launcher]
+            nodes = str(math.ceil(P / rpn)) if rpn else ""
+            cmd = [part.replace("{P}", str(P)).replace("{nodes}", nodes) for part in launcher]
             cmd += [str(a.bench), "--batch", str(batch), "--out", str(out_dir / "results.csv")]
             print(f"[{job_id}] P={P}: {len(lines)} run(s)\n  $ {shlex.join(cmd)}")
             if a.dry_run:
