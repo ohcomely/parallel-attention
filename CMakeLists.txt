@@ -24,6 +24,10 @@ else()
   find_package(BLAS REQUIRED)
   set(BLAS_LIBS ${BLAS_LIBRARIES})
   set(BLAS_NAME OpenBLAS)
+  # FindBLAS gives no include directory; look for cblas.h next to the library (e.g. <prefix>/lib64 -> <prefix>/include).
+  list(GET BLAS_LIBRARIES 0 BLAS_FIRST_LIB)
+  get_filename_component(BLAS_LIB_DIR "${BLAS_FIRST_LIB}" DIRECTORY)
+  find_path(CBLAS_INCLUDE_DIR cblas.h HINTS "${BLAS_LIB_DIR}/../include" PATH_SUFFIXES openblas REQUIRED)
 endif()
 
 # Library: distributed attention (include/attn, src).
@@ -41,6 +45,9 @@ add_library(attn
   src/algs/ring.cpp
   src/algs/softmax_v.cpp)
 target_include_directories(attn PUBLIC include PRIVATE src)
+if(CBLAS_INCLUDE_DIR)
+  target_include_directories(attn PRIVATE ${CBLAS_INCLUDE_DIR})
+endif()
 target_link_libraries(attn PUBLIC MPI::MPI_CXX ${BLAS_LIBS})
 target_compile_definitions(attn PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
 target_compile_options(attn PRIVATE -Wall -Wextra)
