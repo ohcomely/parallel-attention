@@ -82,5 +82,8 @@ foreach(test test_correctness test_words test_timers)
   foreach(np ${ATTN_TEST_RANKS})
     add_test(NAME ${test}_np${np}
              COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${ATTN_MPIEXEC_EXTRA} $<TARGET_FILE:${test}>)
+    # Small problems, several ranks per core set: threaded BLAS would only oversubscribe the cores.
+    set_tests_properties(${test}_np${np} PROPERTIES
+                         ENVIRONMENT "OPENBLAS_NUM_THREADS=1;OMP_NUM_THREADS=1;VECLIB_MAXIMUM_THREADS=1")
   endforeach()
 endforeach()
