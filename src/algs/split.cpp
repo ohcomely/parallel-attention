@@ -1,10 +1,13 @@
+// Split 3D (T = 1) and Pipelined Split 3D (T > 1): producers compute S = Q K^T, consumers compute softmax(S) V.
+#include <algorithm>
 #include <array>
 #include <cmath>
 
-#include "attn/algorithm.hpp"
+#include "algs.hpp"
+#include "attn/costmodel.hpp"
 #include "attn/kernels.hpp"
-#include "attn/rng.hpp"
-#include "steps.hpp"
+#include "attn/layout.hpp"
+#include "softmax_v.hpp"
 
 namespace attn {
 
@@ -25,38 +28,32 @@ Grid make_group_grid(MPI_Comm comm, Role role, Dims d, std::string_view map, Tim
   return g;
 }
 
-int64_t checked_block_rows(const Config& c, MPI_Comm comm) {
-  int size;
-  MPI_Comm_size(comm, &size);
-  require(c.T >= 1, "T must be positive");
-  require(c.grid.size() * 2 == size, "split grid " + c.grid.str() + " must have P/2 ranks");
-  return exact_div(c.prob.n, c.T, "n / T");
-}
-
-class AttnSplit final : public Algorithm {
+class AttnSplit final : public Attention {
  public:
-  AttnSplit(const Config& c, MPI_Comm comm, Timers& t)
-      : p_(c.prob),
-        t_(t),
-        T_(c.T),
-        block_rows_(checked_block_rows(c, comm)),
-        L_(make_layout3d(c.prob, c.grid, block_rows_)),
-        pair_(Comm::dup(comm, t)),
+  AttnSplit(const Plan& p, MPI_Comm comm)
+      : Attention(p),
+        T_(p.T),
+        block_rows_(p.shape.n / p.T),
+        L_(make_layout3d(p.shape, p.grid, block_rows_)),
+        pair_(Comm::dup(comm, timers_)),
         role_(split_role(pair_.rank())),
         partner_(split_partner(pair_.rank())),
-        g_(make_group_grid(comm, role_, c.grid, c.map, t)) {
+        g_(make_group_grid(comm, role_, p.grid, p.map, timers_)) {
     const auto [i, j, k] = g_.at;
     for (auto& s : shard_) s = Mat<float>(L_.s_rows, L_.b);
     if (role_ == Role::producer) {
-      k_own_ = generate(ArrayId::K, {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c1, L_.c1}, p_.seed);
-      for (int b = 0; b < T_; ++b)
-        q_own_.push_back(generate(
-            ArrayId::Q, {b * block_rows_ + i * L_.a + j * L_.a_chunk, L_.a_chunk, k * L_.c1, L_.c1}, p_.seed));
+      k_blk_ = {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c1, L_.c1};
+      k_own_ = Mat<float>(k_blk_.rows, k_blk_.cols);
+      for (int b = 0; b < T_; ++b) {
+        q_blk_.push_back({b * block_rows_ + i * L_.a + j * L_.a_chunk, L_.a_chunk, k * L_.c1, L_.c1});
+        q_own_.emplace_back(L_.a_chunk, L_.c1);
+      }
       k_ = Mat<float>(L_.b, L_.c1);
       q_ = Mat<float>(L_.a, L_.c1);
       s_ = Mat<float>(L_.a, L_.b);
     } else {
-      v_own_ = generate(ArrayId::V, {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c2, L_.c2}, p_.seed);
+      v_blk_ = {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c2, L_.c2};
+      v_own_ = Mat<float>(v_blk_.rows, v_blk_.cols);
       v_ = Mat<float>(L_.b, L_.c2);
       s_ = Mat<float>(L_.a, L_.b);
       o_partial_ = Mat<float>(L_.a, L_.c2);
@@ -69,9 +66,18 @@ class AttnSplit final : public Algorithm {
     }
   }
 
+  Role role() const override { return role_; }
+
+  std::vector<InputSlot> inputs() override {
+    if (role_ == Role::consumer) return {{Array::V, v_blk_, v_own_.ptr()}};
+    std::vector<InputSlot> slots{{Array::K, k_blk_, k_own_.ptr()}};
+    for (int b = 0; b < T_; ++b) slots.push_back({Array::Q, q_blk_[b], q_own_[b].ptr()});
+    return slots;
+  }
+
   void run() override {
     role_ == Role::producer ? run_producer() : run_consumer();
-    t_.block = -1;
+    timers_.block = -1;
   }
 
   std::vector<OutputPiece> output() const override {
@@ -80,19 +86,17 @@ class AttnSplit final : public Algorithm {
     return pieces;
   }
 
-  Role role() const override { return role_; }
-
  private:
   void run_producer() {
     g_.ci.allgather(k_own_.ptr(), k_.ptr(), k_own_.size(), Phase::K);
     for (int b = 0; b < T_; ++b) {
-      t_.block = b;
+      timers_.block = b;
       auto& shard = shard_[b % 2];
       g_.cj.allgather(q_own_[b].ptr(), q_.ptr(), q_own_[b].size(), Phase::Q);
       {
-        Timed _(t_, "gemm_s");
-        gemm_nt(L_.a, L_.b, L_.c1, 1.f / std::sqrt(float(p_.d1)), q_.ptr(), L_.c1, k_.ptr(), L_.c1, 0.f, s_.ptr(),
-                L_.b);
+        Timed _(timers_, "gemm_s");
+        gemm_nt(L_.a, L_.b, L_.c1, 1.f / std::sqrt(float(plan().shape.d1)), q_.ptr(), L_.c1, k_.ptr(), L_.c1, 0.f,
+                s_.ptr(), L_.b);
       }
       pair_.wait(req_[b % 2]);  // shard buffer from block b-2 must be sent before reuse
       g_.ck.reduce_scatter(s_.ptr(), shard.ptr(), shard.size(), Phase::S_rs);
@@ -105,19 +109,17 @@ class AttnSplit final : public Algorithm {
     req_[0] = pair_.irecv(shard_[0].ptr(), shard_[0].size(), partner_, 0, Phase::S_handoff, true);
     g_.ci.allgather(v_own_.ptr(), v_.ptr(), v_own_.size(), Phase::V);
     for (int b = 0; b < T_; ++b) {
-      t_.block = b;
+      timers_.block = b;
       auto& shard = shard_[b % 2];
       pair_.wait(req_[b % 2]);
       if (b + 1 < T_)
         req_[(b + 1) % 2] =
             pair_.irecv(shard_[(b + 1) % 2].ptr(), shard.size(), partner_, b + 1, Phase::S_handoff, true);
       g_.ck.allgather(shard.ptr(), s_.ptr(), shard.size(), Phase::S_ag);
-      softmax_v_reduce(g_.cj, s_, v_, o_partial_, max_, sum_, o_own_[b].ptr(), t_);
+      softmax_v_reduce(g_.cj, s_, v_, o_partial_, max_, sum_, o_own_[b].ptr(), timers_);
     }
   }
 
-  Problem p_;
-  Timers& t_;
   int T_;
   int64_t block_rows_;
   Layout3D L_;
@@ -127,16 +129,34 @@ class AttnSplit final : public Algorithm {
   Grid g_;
   std::array<Mat<float>, 2> shard_;
   std::array<Request, 2> req_;
+  Block k_blk_, v_blk_;
+  std::vector<Block> q_blk_, out_;
   Mat<float> k_own_, k_, q_, s_, v_own_, v_, o_partial_;
   std::vector<Mat<float>> q_own_, o_own_;
-  std::vector<Block> out_;
   std::vector<float> max_, sum_;
 };
 
 }  // namespace
 
-std::unique_ptr<Algorithm> make_attn_split(const Config& c, MPI_Comm comm, Timers& t) {
-  return std::make_unique<AttnSplit>(c, comm, t);
-}
+namespace algs {
+
+const AlgorithmSpec split{
+    .name = "split",
+    .description = "Split 3D (T = 1) / Pipelined Split 3D (T > 1); grid is per group of P/2 ranks",
+    .groups = 2,
+    .pipelined = true,
+    .allows = [](Dims) { return true; },
+    .validate = [](const Shape& s, Dims g, int T) { make_layout3d(s, g, exact_div(s.n, T, "n / T")); },
+    .words =
+        [](const Shape& s, Dims g, int) {
+          const SplitWords w = words_split(s, g);
+          return std::max(w.producer, w.consumer);
+        },
+    .make = [](const Plan& p, MPI_Comm comm) -> std::unique_ptr<Attention> {
+      return std::make_unique<AttnSplit>(p, comm);
+    },
+};
+
+}  // namespace algs
 
 }  // namespace attn

@@ -1,9 +1,9 @@
-#include "attn/stats.hpp"
+#include "bench/stats.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace attn {
+namespace attn::bench {
 
 namespace {
 
@@ -32,4 +32,4 @@ MedianCI median_ci(std::vector<double> x) {
 
 double relative_halfwidth(const MedianCI& m) { return std::max(m.median - m.lo, m.hi - m.median) / m.median; }
 
-}  // namespace attn
+}  // namespace attn::bench

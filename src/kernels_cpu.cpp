@@ -3,7 +3,7 @@
 #include <limits>
 
 #include "attn/kernels.hpp"
-#include "attn/problem.hpp"
+#include "attn/common.hpp"
 
 #ifdef ATTN_ACCELERATE
 #include <Accelerate/Accelerate.h>

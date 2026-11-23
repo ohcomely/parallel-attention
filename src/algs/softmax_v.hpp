@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "attn/comm.hpp"
+#include "attn/timers.hpp"
 #include "attn/matrix.hpp"
 
 namespace attn {

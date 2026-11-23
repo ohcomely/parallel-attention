@@ -1,7 +1,7 @@
 #include <cmath>
 #include <map>
 
-#include "attn/bench.hpp"
+#include "bench/harness.hpp"
 #include "check.hpp"
 
 using namespace attn;
@@ -13,7 +13,7 @@ using Words = std::array<double, num_phases>;
 double c(int r, double N) { return (1.0 - 1.0 / r) * N; }  // all-gather / reduce-scatter among r
 
 // Closed forms from the cost model (research notes §6), per rank.
-Words expected_3d(const Problem& p, Dims g) {
+Words expected_3d(const Shape& p, Dims g) {
   const double n = p.n, d1 = p.d1, d2 = p.d2;
   Words w{};
   w[int(Phase::Q)] = c(g.p2, n * d1 / (g.p1 * g.p3));
@@ -26,7 +26,7 @@ Words expected_3d(const Problem& p, Dims g) {
   return w;
 }
 
-Words expected_split(const Problem& p, Dims g, Role role) {
+Words expected_split(const Shape& p, Dims g, Role role) {
   const double n = p.n, d1 = p.d1, d2 = p.d2;
   Words w{};
   if (role == Role::producer) {
@@ -43,7 +43,7 @@ Words expected_split(const Problem& p, Dims g, Role role) {
   return w;
 }
 
-Words expected_ring(const Problem& p, int P) {
+Words expected_ring(const Shape& p, int P) {
   Words w{};
   w[int(Phase::ring_kv)] = c(P, double(p.n) * (p.d1 + p.d2));
   return w;
@@ -57,23 +57,20 @@ int main(int argc, char** argv) {
   {
     test::Suite s;
     std::map<std::string, Words> split_by_grid;  // words must not depend on T
-    for (const Config& c : test::sanity_configs(s.size)) {
-      Timers t;
-      std::unique_ptr<Algorithm> alg;
-      try {
-        alg = make_algorithm(c, MPI_COMM_WORLD, t);
-      } catch (const std::invalid_argument&) {
-        continue;
-      }
-      run_timed(*alg, t, MPI_COMM_WORLD);
-      const Words want = c.alg == "ring"    ? expected_ring(c.prob, s.size)
-                         : c.alg == "split" ? expected_split(c.prob, c.grid, alg->role())
-                                            : expected_3d(c.prob, c.grid);
+    for (const test::Case& c : test::sanity_cases(s.size)) {
+      auto alg = c.build(s);
+      if (!alg) continue;
+      bench::run_timed(*alg, MPI_COMM_WORLD);
+      const Timers& t = alg->timers();
+      const Plan& p = alg->plan();
+      const Words want = p.alg == "ring"    ? expected_ring(p.shape, s.size)
+                         : p.alg == "split" ? expected_split(p.shape, p.grid, alg->role())
+                                            : expected_3d(p.shape, p.grid);
       bool ok = true;
       for (int ph = 0; ph < num_phases; ++ph) {
         const bool match = std::abs(t.words[ph] - want[ph]) <= 1e-9 * std::max(1.0, want[ph]);
         ok = ok && match;
-        s.expect(match, test::describe(c) + " role " + name(alg->role()) + " phase " +
+        s.expect(match, c.describe() + " role " + name(alg->role()) + " phase " +
                             std::string(phase_names[ph]) + ": got " + std::to_string(t.words[ph]) + ", want " +
                             std::to_string(want[ph]));
       }
@@ -81,16 +78,16 @@ int main(int argc, char** argv) {
       for (int ph = 0; ph < num_phases; ++ph)
         if (ph != int(Phase::rowstat)) words += t.words[ph];
       MPI_Allreduce(&words, &busiest, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-      const double predicted = predicted_words(c, s.size);
+      const double predicted = p.words;
       s.expect(std::abs(busiest - predicted) <= 1e-9 * predicted,
-               test::describe(c) + ": busiest rank received " + std::to_string(busiest) + " words, cost model says " +
+               c.describe() + ": busiest rank received " + std::to_string(busiest) + " words, cost model says " +
                    std::to_string(predicted));
-      if (c.alg == "split") {
-        const std::string key = c.grid.str() + name(alg->role());
+      if (p.alg == "split") {
+        const std::string key = p.grid.str() + name(alg->role());
         if (!split_by_grid.count(key)) split_by_grid[key] = t.words;
-        s.expect(split_by_grid[key] == t.words, test::describe(c) + ": words depend on T");
+        s.expect(split_by_grid[key] == t.words, c.describe() + ": words depend on T");
       }
-      s.log((ok ? "ok    " : "FAIL  ") + test::describe(c));
+      s.log((ok ? "ok    " : "FAIL  ") + c.describe());
     }
     rc = s.finish();
   }

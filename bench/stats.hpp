@@ -2,7 +2,7 @@
 #include <vector>
 
 // Median with a nonparametric (order-statistics) 95% confidence interval; mirrored by tools/stats.py.
-namespace attn {
+namespace attn::bench {
 
 struct MedianCI {
   double median, lo, hi;
@@ -14,4 +14,4 @@ MedianCI median_ci(std::vector<double> x);
 // CI half-width relative to the median: max(median - lo, hi - median) / median.
 double relative_halfwidth(const MedianCI& m);
 
-}  // namespace attn
+}  // namespace attn::bench

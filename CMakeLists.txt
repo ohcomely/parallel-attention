@@ -26,33 +26,42 @@ else()
   set(BLAS_NAME OpenBLAS)
 endif()
 
+# Library: distributed attention (include/attn, src).
 add_library(attn
-  src/rng.cpp
+  src/attention.cpp
+  src/registry.cpp
+  src/costmodel.cpp
+  src/comm.cpp
   src/grid.cpp
   src/layout.cpp
-  src/kernels_cpu.cpp
-  src/comm.cpp
   src/timers.cpp
-  src/reference.cpp
-  src/steps.cpp
-  src/alg_3d.cpp
-  src/alg_split.cpp
-  src/alg_ring.cpp
-  src/algorithm.cpp
-  src/bench.cpp
-  src/costmodel.cpp
-  src/stats.cpp)
+  src/kernels_cpu.cpp
+  src/algs/attn3d.cpp
+  src/algs/split.cpp
+  src/algs/ring.cpp
+  src/algs/softmax_v.cpp)
 target_include_directories(attn PUBLIC include PRIVATE src)
 target_link_libraries(attn PUBLIC MPI::MPI_CXX ${BLAS_LIBS})
 target_compile_definitions(attn PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
 target_compile_options(attn PRIVATE -Wall -Wextra)
 
-add_executable(attnbench src/main_bench.cpp)
-target_link_libraries(attnbench PRIVATE attn)
+# Benchmark harness for the paper: generated inputs, fp64 reference, measurement protocol, CSV output.
+add_library(attn_bench
+  bench/inputs.cpp
+  bench/reference.cpp
+  bench/stats.cpp
+  bench/harness.cpp
+  bench/report.cpp)
+target_include_directories(attn_bench PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(attn_bench PUBLIC attn)
+target_compile_options(attn_bench PRIVATE -Wall -Wextra)
+
+add_executable(attnbench bench/main.cpp)
+target_link_libraries(attnbench PRIVATE attn_bench)
 
 enable_testing()
 add_executable(test_costmodel tests/test_costmodel.cpp)
-target_link_libraries(test_costmodel PRIVATE attn)
+target_link_libraries(test_costmodel PRIVATE attn_bench)
 add_test(NAME test_costmodel COMMAND test_costmodel)
 
 find_package(Python3 COMPONENTS Interpreter)
@@ -62,7 +71,7 @@ endif()
 
 foreach(test test_correctness test_words test_timers)
   add_executable(${test} tests/${test}.cpp)
-  target_link_libraries(${test} PRIVATE attn)
+  target_link_libraries(${test} PRIVATE attn_bench)
   foreach(np ${ATTN_TEST_RANKS})
     add_test(NAME ${test}_np${np}
              COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} ${np} ${ATTN_MPIEXEC_EXTRA} $<TARGET_FILE:${test}>)

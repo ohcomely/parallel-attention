@@ -1,7 +1,7 @@
 #pragma once
 #include <mpi.h>
 
-#include "attn/problem.hpp"
+#include "attn/common.hpp"
 #include "attn/timers.hpp"
 
 namespace attn {

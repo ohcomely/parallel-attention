@@ -1,29 +1,23 @@
 #pragma once
-#include <optional>
-#include <string>
 #include <vector>
 
-#include "attn/algorithm.hpp"
+#include "attn/common.hpp"
+#include "attn/grid.hpp"
 
 // Words received by the busiest rank (research notes §5–6). Row statistics are excluded, as in the bounds.
-// Mirrored by tools/costmodel.py.
+// Pure formulas; mirrored by tools/costmodel.py. Which formula applies to which algorithm is in the registry.
 namespace attn {
 
-double thm_a_words(const Problem& p, int P);
-double thm_b_words(const Problem& p, int P);  // NaN when d1 != d2 (not derived)
+double thm_a_words(const Shape& s, int P);
+double thm_b_words(const Shape& s, int P);  // NaN when d1 != d2 (not derived)
 
 struct SplitWords {
   double producer, consumer;
 };
-double words_3d(const Problem& p, Dims g);
-SplitWords words_split(const Problem& p, Dims g);
-double words_ring(const Problem& p, int P);
-double predicted_words(const Config& c, int P);
+double words_3d(const Shape& s, Dims g);
+SplitWords words_split(const Shape& s, Dims g);
+double words_ring(const Shape& s, int P);
 
-std::vector<Dims> all_grids(int ranks);
-bool grid_fits(const Config& c, int P);  // the layouts divide exactly
-
-// Fewest predicted words; ties go to smaller p3, then smaller p1. "2d" means p3 = 1, "3d" means p3 > 1.
-std::optional<Dims> best_grid(const std::string& alg, const Problem& p, int P, int T = 1);
+std::vector<Dims> all_grids(int ranks);  // every p1 x p2 x p3 with product `ranks`
 
 }  // namespace attn

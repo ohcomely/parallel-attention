@@ -1,6 +1,6 @@
-#include "attn/rng.hpp"
+#include "bench/inputs.hpp"
 
-namespace attn {
+namespace attn::bench {
 
 namespace {
 uint64_t splitmix64(uint64_t x) {
@@ -11,13 +11,13 @@ uint64_t splitmix64(uint64_t x) {
 }
 }  // namespace
 
-float generated_value(ArrayId id, int64_t row, int64_t col, uint64_t seed) {
+float generated_value(Array a, int64_t row, int64_t col, uint64_t seed) {
   uint64_t h = splitmix64(seed);
-  h = splitmix64(h ^ uint64_t(id));
+  h = splitmix64(h ^ uint64_t(a));
   h = splitmix64(h ^ uint64_t(row));
   h = splitmix64(h ^ uint64_t(col));
   const double unit = double(h >> 11) * 0x1.0p-53;
   return float(0.2 * unit - 0.1);
 }
 
-}  // namespace attn
+}  // namespace attn::bench
