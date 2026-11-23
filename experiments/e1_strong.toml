@@ -1,30 +1,31 @@
-# E1, strong scaling (Figure 1): n = 16384, d = 4096 (n^2/d^2 = 16). Grids from the cost model.
+# E1, strong scaling (Figure 1): n = 32768, d = 16384 (n/d = 2, n^2/d^2 = 4) on up to 128 GPUs (Daint).
+# Regimes: 2D best for P <= 4, 3D from P = 32 (+14-27% fewer words than 2D), Split from P = 64 (+12-17% vs 3D).
 # Two allocations, random order within each. On Slurm, replace `launcher` (e.g. ["srun", "-n", "{P}"]).
 name = "e1_strong"
 jobs = 2
 shuffle = true
 
 [defaults]
-n = 16384
-d = 4096
+n = 32768
+d = 16384
 warmup = 5
 reps = 20
 max_reps = 100
 ci_target = 0.05
 
-[[run]]  # single-GPU base case (Rule 1)
+[[run]]  # single-GPU base case (Rule 1); S alone is 4 GiB, all buffers about 17 GB
 P = 1
 alg = "2d"
 
 [[run]]
 alg = ["ring", "2d"]
-P = [8, 16, 32, 64, 128, 256, 512, 1024]
+P = [4, 8, 16, 32, 64, 128]
 
-[[run]]  # below P = 32 the best 3D grid is 2D and Split needs 2D groups
+[[run]]  # at P = 8, 16 the best 3D/Split grids only tie with 2D; from P = 32 they win
 alg = "3d"
-P = [32, 64, 128, 256, 512, 1024]
+P = [8, 16, 32, 64, 128]
 
 [[run]]  # Split (T = 1) and Pipelined Split; TODO: replace T = 4 by T* once the time model is fitted
 alg = "split"
-P = [32, 64, 128, 256, 512, 1024]
+P = [8, 16, 32, 64, 128]
 T = [1, 4]

@@ -1,0 +1,26 @@
+# E4 (optional), weak scaling: d = 16384 and P / (n^2/d^2) = 8 fixed, so F = n^2 d / P and the regime stay fixed.
+# Expected: optimal algorithms nearly flat, Ring grows like sqrt(P).
+name = "e4_weak"
+jobs = 2
+shuffle = true
+
+[defaults]
+d = 16384
+warmup = 5
+reps = 20
+max_reps = 100
+
+[[run]]
+alg = ["ring", "2d", "3d", "split"]
+n = 16384
+P = 8
+
+[[run]]
+alg = ["ring", "2d", "3d", "split"]
+n = 32768
+P = 32
+
+[[run]]
+alg = ["ring", "2d", "3d", "split"]
+n = 65536
+P = 128
