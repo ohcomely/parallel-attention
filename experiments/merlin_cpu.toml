@@ -1,0 +1,47 @@
+# Merlin7 CPU check of the predicted ordering (not a paper figure; the paper reports Daint GPUs).
+# n = 16384, d = 8192 keeps n/d = 2, so the regimes match e1_strong (2D <= 4, 3D from 32, Split from 64) while the
+# arithmetic intensity drops to ~4x the node's flop/byte balance, which leaves communication a visible share of time.
+#
+# Layout: one rank per 8 cores (16 ranks per EPYC 7742 node, threaded OpenBLAS inside each rank), so P = 128 fills
+# 8 nodes, the per-job limit of the `hourly` partition (cpu=2048 hyper-threads). P <= 16 runs inside one node.
+# Submit one allocation per job (sbatch runs run.py --job J):
+#     sbatch experiments/merlin_cpu.sbatch experiments/merlin_cpu.toml 1
+#     sbatch experiments/merlin_cpu.sbatch experiments/merlin_cpu.toml 2
+# Estimated: ~0.3 s per repetition at P = 128, ~5 s at P = 4; about 20-30 min per job.
+name = "merlin_cpu"
+jobs = 2
+shuffle = true
+launcher = ["srun", "--mpi=pmix", "--ntasks={P}", "--cpus-per-task=8", "--hint=nomultithread", "--cpu-bind=cores"]
+env = { OPENBLAS_NUM_THREADS = "8", OMP_NUM_THREADS = "8" }
+
+[defaults]
+n = 16384
+d = 8192
+warmup = 3
+reps = 20
+max_reps = 50
+ci_target = 0.05
+
+[[run]]
+alg = ["ring", "2d"]
+P = [4, 8, 16, 32, 64]
+
+[[run]]
+alg = "3d"
+P = [8, 16, 32, 64]
+
+[[run]]
+alg = "split"
+P = [8, 16, 32, 64]
+T = [1, 4]
+
+[[run]]  # P = 128 (8 full nodes), with per-rank time breakdowns
+alg = ["ring", "2d", "3d"]
+P = 128
+timeline = true
+
+[[run]]
+alg = "split"
+P = 128
+T = [1, 4]
+timeline = true

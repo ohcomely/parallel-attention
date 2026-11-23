@@ -3,6 +3,7 @@
 
     python3 experiments/run.py experiments/sanity_mac.toml            # run locally
     python3 experiments/run.py experiments/e1_strong.toml --dry-run   # show runs, grids and commands only
+    python3 experiments/run.py experiments/merlin_cpu.toml --job 2    # only job 2 (one Slurm allocation per job)
 
 A spec has top-level settings, a [defaults] table and one or more [[run]] tables:
 
@@ -31,7 +32,11 @@ import random
 import shlex
 import subprocess
 import sys
-import tomllib
+
+try:
+    import tomllib  # Python >= 3.11
+except ModuleNotFoundError:
+    import tomli as tomllib  # pip install tomli
 from collections import defaultdict
 from pathlib import Path
 
@@ -79,6 +84,7 @@ def main():
     ap.add_argument("--out", type=Path, help="output directory (default: results/<name>)")
     ap.add_argument("--bench", type=Path, default=ROOT / "build" / "attnbench")
     ap.add_argument("--seed", type=int, default=0, help="seed for the run order")
+    ap.add_argument("--job", type=int, help="run only this job (1 .. jobs), e.g. one per Slurm allocation")
     ap.add_argument("--dry-run", action="store_true", help="print plans and commands, run nothing")
     a = ap.parse_args()
 
@@ -89,6 +95,7 @@ def main():
     jobs = spec.get("jobs", 1)
     launcher = spec.get("launcher", ["mpirun", "-np", "{P}"])
     out_dir = (a.out or ROOT / "results" / name).resolve()
+    require(a.job is None or 1 <= a.job <= jobs, f"--job must be in 1 .. {jobs}")
     runs = expand(spec)
     require(runs, f"{a.spec} defines no runs")
     require(a.bench.exists() or a.dry_run, f"{a.bench} not found; build first (cmake --build build)")
@@ -114,6 +121,8 @@ def main():
             rng.shuffle(order)
             for P in order:
                 rng.shuffle(by_P[P])
+        if a.job is not None and job != a.job:  # skipped after shuffling, so the order matches a full run
+            continue
         job_id = f"{name}-{job}"
         for P in order:
             batch = batch_dir / f"job{job}_P{P}.txt"
