@@ -1,0 +1,30 @@
+# E1, strong scaling (Figure 1): n = 16384, d = 4096 (n^2/d^2 = 16). Grids from the cost model.
+# Two allocations, random order within each. On Slurm, replace `launcher` (e.g. ["srun", "-n", "{P}"]).
+name = "e1_strong"
+jobs = 2
+shuffle = true
+
+[defaults]
+n = 16384
+d = 4096
+warmup = 5
+reps = 20
+max_reps = 100
+ci_target = 0.05
+
+[[run]]  # single-GPU base case (Rule 1)
+P = 1
+alg = "2d"
+
+[[run]]
+alg = ["ring", "2d"]
+P = [8, 16, 32, 64, 128, 256, 512, 1024]
+
+[[run]]  # below P = 32 the best 3D grid is 2D and Split needs 2D groups
+alg = "3d"
+P = [32, 64, 128, 256, 512, 1024]
+
+[[run]]  # Split (T = 1) and Pipelined Split; TODO: replace T = 4 by T* once the time model is fitted
+alg = "split"
+P = [32, 64, 128, 256, 512, 1024]
+T = [1, 4]

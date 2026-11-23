@@ -39,8 +39,9 @@ std::string role_columns(const std::vector<Sample>& s, Role r) {
 
 RunInfo run_info(MPI_Comm comm) {
   RunInfo r;
-  const char* job = std::getenv("SLURM_JOB_ID");
-  r.job_id = job ? job : "local";
+  const char* job = std::getenv("ATTN_JOB_ID");  // set by experiments/run.py for local runs
+  if (!job) job = std::getenv("SLURM_JOB_ID");
+  r.job_id = job ? sanitize(job) : "local";
   char stamp[32];
   const std::time_t tt = std::time(nullptr);
   std::strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%S", std::localtime(&tt));

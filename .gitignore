@@ -77,3 +77,6 @@ explain/
 figures/
 .DS_Store
 .vscode/
+
+# Experiment outputs
+results/

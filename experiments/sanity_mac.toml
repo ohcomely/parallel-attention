@@ -1,0 +1,45 @@
+# Sanity check (MacBook, CPU path, not reported): every algorithm against the fp64 reference at small size.
+# Run the unit tests first: ctest --test-dir build --output-on-failure
+name = "sanity_mac"
+launcher = ["mpirun", "--oversubscribe", "-np", "{P}"]
+
+[defaults]
+n = 2048
+d = 512
+warmup = 1
+reps = 3
+max_reps = 3
+check = true
+
+[[run]]
+P = 1
+alg = "2d"
+grid = "1x1x1"
+
+[[run]]
+P = 4
+alg = "2d"
+grid = "2x2x1"
+
+[[run]]
+P = 8
+alg = "3d"
+grid = "2x2x2"
+d2 = [512, 128]
+
+[[run]]
+P = 8
+alg = "ring"
+
+[[run]]
+P = 8
+alg = "split"
+grid = "2x2x1"
+T = 1
+
+[[run]]
+P = 8
+alg = "split"
+grid = "2x2x1"
+T = 4
+timeline = true

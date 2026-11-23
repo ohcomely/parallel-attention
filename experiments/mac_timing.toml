@@ -1,0 +1,22 @@
+# Curiosity timing on the MacBook (not for the paper): Ring vs 2D vs 3D at P = 8 with n = d = 4096 (3D regime),
+# plus a single-rank baseline. One BLAS thread per rank. Finding so far: Accelerate's SGEMM shares one matrix
+# unit, so the Mac cannot rank the algorithms.
+name = "mac_timing"
+jobs = 2
+shuffle = true
+env = { VECLIB_MAXIMUM_THREADS = "1" }
+
+[defaults]
+n = 4096
+d = 4096
+warmup = 3
+reps = 20
+max_reps = 60
+
+[[run]]
+P = 8
+alg = ["ring", "2d", "3d"]
+
+[[run]]
+P = 1
+alg = "2d"

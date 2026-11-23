@@ -1,0 +1,26 @@
+# E2, time breakdown (Figure 2): one P per regime, every algorithm, plus timelines.
+# TODO: Split T values should be 1, T*, 4T* once T* is known (placeholder 1, 4, 16).
+name = "e2_breakdown"
+jobs = 2
+shuffle = true
+
+[defaults]
+n = 16384
+d = 4096
+warmup = 5
+reps = 20
+max_reps = 100
+timeline = true
+
+[[run]]
+alg = ["ring", "2d", "3d", "split"]
+P = [16, 128]
+
+[[run]]
+alg = ["ring", "2d", "3d"]
+P = 1024
+
+[[run]]
+alg = "split"
+P = 1024
+T = [1, 4, 16]

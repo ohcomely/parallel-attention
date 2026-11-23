@@ -1,0 +1,17 @@
+# E3, unequal head dimensions (table): d1 = 4096 (Q, K), d2 = 1024 (V). P = 16 / 64 / 512 puts the two loops in
+# 2D/2D, mixed and 3D/3D regimes. TODO: add the mixed 2D+3D algorithm once implemented.
+name = "e3_unequal"
+jobs = 2
+shuffle = true
+
+[defaults]
+n = 16384
+d = 4096
+d2 = 1024
+warmup = 5
+reps = 20
+max_reps = 100
+
+[[run]]
+alg = ["2d", "3d"]
+P = [16, 64, 512]
