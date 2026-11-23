@@ -16,7 +16,7 @@
 set -euo pipefail
 
 module purge
-module load gcc/14.3.0 openmpi/5.0.8   # plus an OpenBLAS module (find it with `module search openblas`)
+module load gcc/14.3.0 openmpi/5.0.10 OpenBLAS/0.3.30 Python/3.12.9   # same modules as the build
 # Optional, recommended by the Merlin7 docs for inter-node Open MPI traffic (preview provider):
 # export FI_PROVIDER=lnx FI_LNX_PROV_LINKS="shm+cxi:cxi0"
 
