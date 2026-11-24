@@ -51,6 +51,10 @@ struct Case {
                     " d2=" + std::to_string(shape.d2);
     if (opts.grid) s += " grid=" + opts.grid->str();
     if (opts.T != 1) s += " T=" + std::to_string(opts.T);
+    if (!opts.blocks.empty()) {
+      s += " blocks=";
+      for (size_t b = 0; b < opts.blocks.size(); ++b) s += (b ? "," : "") + std::to_string(opts.blocks[b]);
+    }
     return s;
   }
 
@@ -77,8 +81,10 @@ inline std::vector<Case> sanity_cases(int P, bool include_d2 = true) {
     for (Dims d : all_grids(P)) out.push_back({d.p3 == 1 ? "2d" : "3d", s, {.grid = d}});
   out.push_back({"ring", eq, {}});
   if (P % 2 == 0)
-    for (Dims d : all_grids(P / 2))
+    for (Dims d : all_grids(P / 2)) {
       for (int T : {1, 2, 4}) out.push_back({"split", eq, {.grid = d, .T = T}});
+      out.push_back({"split", eq, {.grid = d, .blocks = {1, 3, 3, 1}}});  // unequal pipeline blocks
+    }
   return out;
 }
 

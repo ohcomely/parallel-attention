@@ -73,7 +73,10 @@ def options(run, out_dir, job):
         flag = "--" + key.replace("_", "-")
         if key == "timeline" and value is True:
             grid = f"_{run['grid']}" if run.get("grid", "auto") != "auto" else ""
-            value = out_dir / f"timeline_{run['alg']}_P{run['P']}_T{run.get('T', 1)}{grid}_job{job}.csv"
+            blocks = str(run.get("blocks", "uniform"))
+            T = len(blocks.split(",")) if blocks != "uniform" else run.get("T", 1)
+            grid += f"_b{blocks.replace(',', '-')}" if blocks != "uniform" else ""
+            value = out_dir / f"timeline_{run['alg']}_P{run['P']}_T{T}{grid}_job{job}.csv"
         if value is True:
             args.append(flag)
         elif value is not False:

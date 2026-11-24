@@ -63,10 +63,11 @@ void gemm_nn(int64_t m, int64_t n, int64_t k, T alpha, const T* A, int64_t lda, 
             to_int(ldc));
 }
 
-// Rows are independent: split them over OpenMP threads when the library is built with OpenMP (ATTN_OPENMP).
+// Rows are independent: split them over OpenMP threads when the library is built with OpenMP (ATTN_OPENMP), but
+// only for blocks of at least 2^18 entries, so small calls (Ring at large P) do not pay for waking the thread team.
 // The inner loops are `omp simd` (needs only -fopenmp-simd) so they vectorise without -ffast-math.
 #ifdef _OPENMP
-#define ATTN_PARALLEL_ROWS _Pragma("omp parallel for schedule(static)")
+#define ATTN_PARALLEL_ROWS _Pragma("omp parallel for schedule(static) if (m * n >= (int64_t(1) << 18))")
 #else
 #define ATTN_PARALLEL_ROWS
 #endif

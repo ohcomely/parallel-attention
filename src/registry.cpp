@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "algs/algs.hpp"
 #include "attn/costmodel.hpp"
@@ -25,14 +26,34 @@ const AlgorithmSpec& algorithm(std::string_view name) {
   throw std::invalid_argument("unknown algorithm '" + std::string(name) + "' (known: " + known + ")");
 }
 
+std::vector<int64_t> pipeline_rows(int64_t n, int T, const std::vector<int>& blocks) {
+  if (blocks.empty()) {
+    if (T < 1 || n % T) return {};
+    return std::vector<int64_t>(T, n / T);
+  }
+  int64_t sum = 0;
+  for (int w : blocks) {
+    if (w < 1) return {};
+    sum += w;
+  }
+  if (n % sum) return {};
+  std::vector<int64_t> rows;
+  for (int w : blocks) rows.push_back(w * (n / sum));
+  return rows;
+}
+
 std::optional<Dims> best_grid(const AlgorithmSpec& spec, const Shape& s, int P, int T) {
-  if (P % spec.groups) return std::nullopt;
+  return best_grid(spec, s, P, pipeline_rows(s.n, T, {}));
+}
+
+std::optional<Dims> best_grid(const AlgorithmSpec& spec, const Shape& s, int P, std::span<const int64_t> rows) {
+  if (P % spec.groups || rows.empty()) return std::nullopt;
   std::optional<Dims> best;
   double best_words = 0;
   for (Dims g : all_grids(P / spec.groups)) {
     if (!spec.allows(g)) continue;
     try {
-      spec.validate(s, g, T);
+      spec.validate(s, g, rows);
     } catch (const std::invalid_argument&) {
       continue;
     }

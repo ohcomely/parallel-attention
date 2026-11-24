@@ -22,6 +22,7 @@ namespace attn {
 struct Options {
   std::optional<Dims> grid;  // per group for two-group algorithms (split); unset = fewest predicted words
   int T = 1;                 // pipeline blocks, for pipelined algorithms (split)
+  std::vector<int> blocks;   // split: relative block sizes, e.g. {1, 3, 3, 1}; T = blocks.size(). Empty = T equal
   std::string map = "kji";   // grid coordinate order across consecutive ranks; first letter varies fastest
 };
 
@@ -32,6 +33,8 @@ struct Plan {
   int P = 1;
   Dims grid;     // per group for split; P x 1 x 1 for ring
   int T = 1;
+  std::vector<int64_t> block_rows;  // query rows of each pipeline block (T entries; {n} if not pipelined)
+  std::vector<int> blocks;          // relative block sizes as given; empty = uniform
   std::string map;
   double words;  // words received by the busiest rank, row statistics excluded
 };

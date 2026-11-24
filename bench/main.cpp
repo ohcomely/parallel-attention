@@ -27,10 +27,11 @@ const char* const usage = R"(usage:
   attnbench --list                                list algorithms
 
 problem:     --alg ALG  --n N  --d D1  [--d2 D2]  [--seed 1]
-algorithm:   [--grid auto|p1xp2xp3]  [--T 1]  [--map kji]
+algorithm:   [--grid auto|p1xp2xp3]  [--T 1]  [--blocks uniform|w1,w2,...]  [--map kji]
 repetitions: [--warmup 5]  [--reps 20]  [--max-reps 100]  [--ci-target 0.05]
 output:      [--out results.csv]  [--timeline timeline.csv]  [--check]
 
+--blocks (split) sets relative pipeline block sizes, e.g. 1,3,3,1 (T = 4; first and last block n/8 rows).
 In a batch file, '#' starts a comment and each line's options override those given on the command line.
 )";
 
@@ -51,6 +52,15 @@ struct Command {
   int plan_P = 0;
 };
 
+// "1,3,3,1" -> {1, 3, 3, 1}; "uniform" -> {}.
+std::vector<int> parse_blocks(const std::string& v) {
+  std::vector<int> out;
+  if (v == "uniform") return out;
+  std::istringstream in(v);
+  for (std::string w; std::getline(in, w, ',');) out.push_back(std::stoi(w));
+  return out;
+}
+
 // Applies `tokens` on top of `cmd`. Flags without a value: --check, --plan, --list, --help.
 void parse_into(const std::vector<std::string>& tokens, Command& cmd) {
   Args& a = cmd.args;
@@ -69,6 +79,7 @@ void parse_into(const std::vector<std::string>& tokens, Command& cmd) {
     else if (key == "--seed") a.seed = std::stoull(v);
     else if (key == "--grid") a.opts.grid = v == "auto" ? std::nullopt : std::optional(parse_dims(v));
     else if (key == "--T") a.opts.T = std::stoi(v);
+    else if (key == "--blocks") a.opts.blocks = parse_blocks(v);
     else if (key == "--map") a.opts.map = v;
     else if (key == "--warmup") a.reps.warmup = std::stoi(v);
     else if (key == "--reps") a.reps.reps = std::stoi(v);
@@ -89,10 +100,12 @@ std::vector<std::string> split_words(const std::string& line) {
   return words;
 }
 
+std::string blocks_suffix(const Plan& p) { return p.blocks.empty() ? "" : " blocks=" + blocks_str(p); }
+
 void print_plan(const Plan& p) {
-  std::printf("%s n=%lld d1=%lld d2=%lld P=%d grid=%s T=%d: predicted words %.0f, Theorem A %.0f", p.alg.c_str(),
+  std::printf("%s n=%lld d1=%lld d2=%lld P=%d grid=%s T=%d%s: predicted words %.0f, Theorem A %.0f", p.alg.c_str(),
               (long long)p.shape.n, (long long)p.shape.d1, (long long)p.shape.d2, p.P, p.grid.str().c_str(), p.T,
-              p.words, thm_a_words(p.shape, p.P));
+              blocks_suffix(p).c_str(), p.words, thm_a_words(p.shape, p.P));
   if (const double b = thm_b_words(p.shape, p.P); !std::isnan(b)) std::printf(", Theorem B %.0f", b);
   std::printf("\n");
 }
@@ -112,10 +125,10 @@ bool bench(const Args& a, const RunInfo& info, MPI_Comm comm) {
   });
   if (rank == 0) {
     const MedianCI& t = m.t_total_max;
-    std::printf("%s n=%lld d1=%lld d2=%lld P=%d grid=%s T=%d map=%s: median t_total_max %.4g s, 95%% CI [%.4g, %.4g]%s, "
+    std::printf("%s n=%lld d1=%lld d2=%lld P=%d grid=%s T=%d%s map=%s: median t_total_max %.4g s, 95%% CI [%.4g, %.4g]%s, "
                 "%d reps, predicted words %.0f\n",
                 p.alg.c_str(), (long long)p.shape.n, (long long)p.shape.d1, (long long)p.shape.d2, p.P,
-                p.grid.str().c_str(), p.T, p.map.c_str(), t.median, t.lo, t.hi, t.exact ? "" : " (too few reps)",
+                p.grid.str().c_str(), p.T, blocks_suffix(p).c_str(), p.map.c_str(), t.median, t.lo, t.hi, t.exact ? "" : " (too few reps)",
                 m.reps, p.words);
   }
   if (!a.check) return true;

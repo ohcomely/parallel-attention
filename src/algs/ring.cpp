@@ -95,7 +95,7 @@ const AlgorithmSpec ring{
     .groups = 1,
     .pipelined = false,
     .allows = [](Dims g) { return g.p2 == 1 && g.p3 == 1; },
-    .validate = [](const Shape& s, Dims g, int) { exact_div(s.n, g.p1, "n / P"); },
+    .validate = [](const Shape& s, Dims g, std::span<const int64_t>) { exact_div(s.n, g.p1, "n / P"); },
     .words = [](const Shape& s, Dims, int P) { return words_ring(s, P); },
     .make = [](const Plan& p, MPI_Comm comm) -> std::unique_ptr<Attention> {
       return std::make_unique<AttnRing>(p, comm);

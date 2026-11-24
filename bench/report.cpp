@@ -94,7 +94,14 @@ const char* const csv_header =
     "job_id,timestamp,machine,gpu,nodes,ranks_per_node,mpi,cuda,cublas,compiler,device,blas,alg,n,d1,d2,P,p1,p2,"
     "p3,T,map,dtype,seed,rep,t_total_max,crit_rank,crit_role,crit_compute,crit_comm,crit_idle_handoff,"
     "crit_idle_tail,crit_other,prod_compute,prod_comm,prod_idle,cons_compute,cons_comm,cons_idle,pred_words,"
-    "thmA_words,thmB_words,blas_threads,kernel_threads,cpus_per_rank,cpu_bind";
+    "thmA_words,thmB_words,blas_threads,kernel_threads,cpus_per_rank,cpu_bind,blocks";
+
+std::string blocks_str(const Plan& p) {
+  if (p.blocks.empty()) return "uniform";
+  std::string s;
+  for (size_t b = 0; b < p.blocks.size(); ++b) s += (b ? ";" : "") + std::to_string(p.blocks[b]);
+  return s;
+}
 
 std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, const std::vector<Sample>& s) {
   const int crit = slowest(s);
@@ -113,7 +120,7 @@ std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, 
   r << ',';
   if (info.blas_threads < 0) r << "na";
   else r << info.blas_threads;
-  r << ',' << info.kernel_threads << ',' << info.cpus_per_rank << ',' << info.cpu_bind;
+  r << ',' << info.kernel_threads << ',' << info.cpus_per_rank << ',' << info.cpu_bind << ',' << blocks_str(p);
   return r.str();
 }
 
