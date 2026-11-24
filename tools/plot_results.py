@@ -382,8 +382,10 @@ def fig_timeline(dir_, S, out, ranks=16):
              if not f.name.startswith("timeline_ring") and len(f.stem.split("_")) == 5]
     if not files:
         return
+    key = lambda f: (f.stem.split("_")[1], int(f.stem.split("_")[2][1:]), int(f.stem.split("_")[3][1:]))  # alg, P, T
+    P_max = max(key(f)[1] for f in files)  # one P only: the largest (where the regimes differ most)
     order = {"2d": 0, "3d": 1, "split": 2}
-    files.sort(key=lambda f: (order.get(f.name.split("_")[1], 9), f.name))
+    files = sorted((f for f in files if key(f)[1] == P_max), key=lambda f: (order.get(key(f)[0], 9), *key(f)[1:]))
     fig, axes = plt.subplots(len(files), 1, figsize=(7.2, 0.4 + 1.15 * len(files)), sharex=True)
     axes = np.atleast_1d(axes)
     for ax, f in zip(axes, files):
