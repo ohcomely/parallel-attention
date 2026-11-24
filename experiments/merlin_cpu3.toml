@@ -1,0 +1,71 @@
+# Merlin7 CPU, third round: same layout as merlin_cpu2 (16 ranks x 8 cores per node, 4 allocations), new code:
+#  * softmax kernels vectorised and threaded with OpenMP (OMP_NUM_THREADS = 8);
+#  * exponentials taken on the S shard (producer side in Split), not p3 times on the gathered block.
+# Every run writes a timeline (first timed repetition) so per-block idle can be checked.
+# The grid sweep at P = 64 / 128 runs the grids next to the words-optimal (auto) one: ties and near-ties in
+# predicted words, and transposes (which fibre stays inside a node). Auto grids, n = 16384, d = 8192:
+#     P = 64:  2d 8x8x1, 3d 4x8x2, split 4x4x2      P = 128: 2d 8x16x1, 3d 8x8x2, split 4x8x2
+# Submit (each allocation ~15-20 min on 8 nodes of `hourly`):
+#     sbatch --array=1-4%1 experiments/merlin_cpu.sbatch experiments/merlin_cpu3.toml
+name = "merlin_cpu3"
+jobs = 4
+shuffle = true
+ranks_per_node = 16
+launcher = ["srun", "--mpi=pmix", "--nodes={nodes}", "--ntasks={P}", "--ntasks-per-node=16", "--cpus-per-task=8",
+            "--hint=nomultithread", "--cpu-bind=cores"]
+env = { OPENBLAS_NUM_THREADS = "8", OMP_NUM_THREADS = "8" }
+
+[defaults]
+n = 16384
+d = 8192
+warmup = 3
+reps = 20
+max_reps = 50
+ci_target = 0.05
+timeline = true
+
+# Scaling, words-optimal grids (comparable with merlin_cpu2).
+[[run]]
+alg = ["ring", "2d", "3d"]
+P = [16, 32, 64, 128]
+
+[[run]]
+alg = "split"
+P = [16, 32]
+T = [1, 4]
+
+[[run]]
+alg = "split"
+P = [64, 128]
+T = [1, 2, 4, 8]
+
+# Grid sweep, P = 64 (predicted words in millions: 3d 4x8x2 = 8x4x2 = 4x4x4 = 50.3, 2x8x4 = 58.7;
+# split 4x4x2 = 41.9, 4x8x1 = 8x2x2 = 50.3).
+[[run]]
+alg = "3d"
+P = 64
+grid = ["8x4x2", "4x4x4", "2x8x4"]
+
+[[run]]
+alg = "split"
+P = 64
+T = 4
+grid = ["4x8x1", "8x2x2"]
+
+# Grid sweep, P = 128 (2d 8x16x1 = 16x8x1 = 46.1; 3d 8x8x2 = 4x8x4 = 8x4x4 = 33.6, 4x16x2 = 41.9;
+# split 4x8x2 = 8x4x2 = 4x4x4 = 29.4).
+[[run]]
+alg = "2d"
+P = 128
+grid = "16x8x1"
+
+[[run]]
+alg = "3d"
+P = 128
+grid = ["4x8x4", "8x4x4", "4x16x2"]
+
+[[run]]
+alg = "split"
+P = 128
+T = 2
+grid = ["8x4x2", "4x4x4"]

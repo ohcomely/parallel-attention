@@ -51,12 +51,15 @@ class Attn3D final : public Attention {
       gemm_nt(L_.a, L_.b, L_.c1, 1.f / std::sqrt(float(plan().shape.d1)), q_.ptr(), L_.c1, k_.ptr(), L_.c1, 0.f,
               split_depth ? s_partial_.ptr() : s_.ptr(), L_.b);
     }
-    if (split_depth) {
+    if (split_depth) {  // exponentials on this rank's 1/p3 shard of rows, then gather exp(S)
       g_.ck.reduce_scatter(s_partial_.ptr(), s_shard_.ptr(), s_shard_.size(), Phase::S_rs);
+      softmax_exp(g_.cj, s_shard_.ptr(), L_.s_rows, L_.b, max_, t);
       g_.ck.allgather(s_shard_.ptr(), s_.ptr(), s_shard_.size(), Phase::S_ag);
+    } else {
+      softmax_exp(g_.cj, s_.ptr(), L_.a, L_.b, max_, t);
     }
     g_.ci.allgather(v_own_.ptr(), v_.ptr(), v_own_.size(), Phase::V);
-    softmax_v_reduce(g_.cj, s_, v_, o_partial_, max_, sum_, o_.ptr(), t);
+    softmax_v_reduce(g_.cj, s_, v_, o_partial_, sum_, o_.ptr(), t);
   }
 
   std::vector<OutputPiece> output() const override { return {{out_, o_.ptr()}}; }

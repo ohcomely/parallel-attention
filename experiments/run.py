@@ -23,7 +23,7 @@ A spec has top-level settings, a [defaults] table and one or more [[run]] tables
     P   = [8, 16, 32]
 
 Every key other than P becomes an attnbench option (`max_reps = 60` -> `--max-reps 60`, `check = true` -> `--check`).
-`timeline = true` writes timeline_<alg>_P<P>_T<T>_job<j>.csv next to results.csv. All runs with the same P in one job
+`timeline = true` writes timeline_<alg>_P<P>_T<T>[_<grid>]_job<j>.csv next to results.csv. All runs with the same P in one job
 go into a single `attnbench --batch` call. Each job's rows are labelled <name>-<job> in the job_id column.
 """
 import argparse
@@ -72,7 +72,8 @@ def options(run, out_dir, job):
             continue
         flag = "--" + key.replace("_", "-")
         if key == "timeline" and value is True:
-            value = out_dir / f"timeline_{run['alg']}_P{run['P']}_T{run.get('T', 1)}_job{job}.csv"
+            grid = f"_{run['grid']}" if run.get("grid", "auto") != "auto" else ""
+            value = out_dir / f"timeline_{run['alg']}_P{run['P']}_T{run.get('T', 1)}{grid}_job{job}.csv"
         if value is True:
             args.append(flag)
         elif value is not False:

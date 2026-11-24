@@ -27,6 +27,7 @@ import numpy as np  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 
+from costmodel import best_grid  # noqa: E402
 from stats import median_ci  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,10 +56,19 @@ def load(path):
         return list(csv.DictReader(f))
 
 
+def is_auto_grid(r):
+    """True if the row ran the words-optimal grid (what --grid auto picks); grid-sweep rows are False."""
+    if r["alg"] == "ring":  # no grid choice
+        return True
+    g = best_grid(r["alg"], int(r["n"]), int(r["d1"]), int(r["d2"]), int(r["P"]), int(r["T"]))
+    return g == (int(r["p1"]), int(r["p2"]), int(r["p3"]))
+
+
 def summarize(rows):
-    """{(alg, T, P): stats of the slowest rank pooled over allocations, plus per-allocation medians}."""
+    """{(alg, T, P): stats of the slowest rank pooled over allocations, plus per-allocation medians}.
+    Only words-optimal grids: grid-sweep runs would otherwise be pooled with them."""
     groups = defaultdict(list)
-    for r in rows:
+    for r in filter(is_auto_grid, rows):
         groups[(r["alg"], int(r["T"]), int(r["P"]))].append(r)
     out = {}
     for k, rs in groups.items():
@@ -368,7 +378,8 @@ def fig_placement(S, C, out, name_s, name_c):
 
 
 def fig_timeline(dir_, S, out, ranks=16):
-    files = [f for f in sorted(dir_.glob("timeline_*_job1.csv")) if not f.name.startswith("timeline_ring")]
+    files = [f for f in sorted(dir_.glob("timeline_*_job1.csv"))  # no Ring, no grid-sweep runs (grid in the name)
+             if not f.name.startswith("timeline_ring") and len(f.stem.split("_")) == 5]
     if not files:
         return
     order = {"2d": 0, "3d": 1, "split": 2}

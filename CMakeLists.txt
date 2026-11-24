@@ -9,6 +9,8 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(ATTN_GPU "Build the CUDA/cuBLAS path (not implemented yet)" OFF)
+option(ATTN_OPENMP "Thread the softmax kernels with OpenMP (if found)" ON)
+option(ATTN_NATIVE "Compile for the build machine's CPU (-march=native); build on a compute node" OFF)
 set(ATTN_MPIEXEC_EXTRA "--oversubscribe" CACHE STRING "Extra mpiexec flags for tests")
 set(ATTN_TEST_RANKS 1 2 4 8 CACHE STRING "Rank counts used by ctest")
 
@@ -51,6 +53,23 @@ endif()
 target_link_libraries(attn PUBLIC MPI::MPI_CXX ${BLAS_LIBS})
 target_compile_definitions(attn PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
 target_compile_options(attn PRIVATE -Wall -Wextra)
+# Softmax kernels: `omp simd` loops vectorise with -fopenmp-simd alone; OpenMP threads split rows.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-fopenmp-simd ATTN_HAS_OPENMP_SIMD)
+if(ATTN_HAS_OPENMP_SIMD)
+  target_compile_options(attn PRIVATE -fopenmp-simd)
+endif()
+if(ATTN_OPENMP)
+  find_package(OpenMP COMPONENTS CXX)
+  if(OpenMP_CXX_FOUND)
+    target_link_libraries(attn PRIVATE OpenMP::OpenMP_CXX)
+  else()
+    message(STATUS "OpenMP not found: softmax kernels run on one thread")
+  endif()
+endif()
+if(ATTN_NATIVE)
+  target_compile_options(attn PRIVATE -march=native)
+endif()
 
 # Benchmark harness for the paper: generated inputs, fp64 reference, measurement protocol, CSV output.
 add_library(attn_bench

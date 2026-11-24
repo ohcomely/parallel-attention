@@ -22,7 +22,8 @@ Words expected_3d(const Shape& p, Dims g) {
   w[int(Phase::S_rs)] = c(g.p3, n * n / (g.p1 * g.p2));
   w[int(Phase::S_ag)] = c(g.p3, n * n / (g.p1 * g.p2));
   w[int(Phase::O)] = c(g.p2, n * d2 / (g.p1 * g.p3));
-  w[int(Phase::rowstat)] = 2 * 2 * c(g.p2, n / g.p1);
+  // max all-reduce on the S shard (n / (p1 p3) rows), sum all-reduce on the gathered block (n / p1 rows)
+  w[int(Phase::rowstat)] = 2 * c(g.p2, n / (g.p1 * g.p3)) + 2 * c(g.p2, n / g.p1);
   return w;
 }
 
@@ -33,12 +34,13 @@ Words expected_split(const Shape& p, Dims g, Role role) {
     w[int(Phase::Q)] = c(g.p2, n * d1 / (g.p1 * g.p3));
     w[int(Phase::K)] = c(g.p1, n * d1 / (g.p2 * g.p3));
     w[int(Phase::S_rs)] = c(g.p3, n * n / (g.p1 * g.p2));
+    w[int(Phase::rowstat)] = 2 * c(g.p2, n / (g.p1 * g.p3));  // max all-reduce on the shard
   } else {
     w[int(Phase::S_handoff)] = n * n / (g.p1 * g.p2 * g.p3);
     w[int(Phase::S_ag)] = c(g.p3, n * n / (g.p1 * g.p2));
     w[int(Phase::V)] = c(g.p1, n * d2 / (g.p2 * g.p3));
     w[int(Phase::O)] = c(g.p2, n * d2 / (g.p1 * g.p3));
-    w[int(Phase::rowstat)] = 2 * 2 * c(g.p2, n / g.p1);
+    w[int(Phase::rowstat)] = 2 * c(g.p2, n / g.p1);  // sum all-reduce
   }
   return w;
 }

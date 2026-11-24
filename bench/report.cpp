@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -10,6 +11,10 @@
 
 #include "attn/costmodel.hpp"
 #include "attn/kernels.hpp"
+
+#ifdef __linux__
+#include <sched.h>
+#endif
 
 namespace attn::bench {
 
@@ -63,6 +68,25 @@ RunInfo run_info(MPI_Comm comm) {
   const int leader = node_rank == 0;
   MPI_Allreduce(&leader, &r.nodes, 1, MPI_INT, MPI_SUM, comm);
   MPI_Comm_free(&node);
+
+  r.blas_threads = blas_threads();
+  r.kernel_threads = kernel_threads();
+#ifdef __linux__
+  cpu_set_t mask;
+  int cpus[2] = {-1, 0};
+  if (sched_getaffinity(0, sizeof mask, &mask) == 0) cpus[0] = cpus[1] = CPU_COUNT(&mask);
+  cpus[1] = -cpus[1];  // one MIN all-reduce gives min and max
+  MPI_Allreduce(MPI_IN_PLACE, cpus, 2, MPI_INT, MPI_MIN, comm);
+  if (cpus[0] > 0)
+    r.cpus_per_rank = cpus[0] == -cpus[1] ? std::to_string(cpus[0])
+                                          : std::to_string(cpus[0]) + "-" + std::to_string(-cpus[1]);
+#endif
+  // Binding policy as the launcher reports it: Slurm's srun, else Open MPI's mpirun (PRRTE), else unset.
+  std::string bind;
+  for (const char* var : {"SLURM_CPU_BIND_TYPE", "SLURM_HINT", "OMPI_MCA_hwloc_base_binding_policy",
+                          "PRTE_MCA_hwloc_default_binding_policy", "OMP_PROC_BIND"})
+    if (const char* v = std::getenv(var); v && *v) bind += (bind.empty() ? "" : " ") + std::string(var) + "=" + v;
+  r.cpu_bind = bind.empty() ? "unset" : sanitize(bind);
   return r;
 }
 
@@ -70,7 +94,7 @@ const char* const csv_header =
     "job_id,timestamp,machine,gpu,nodes,ranks_per_node,mpi,cuda,cublas,compiler,device,blas,alg,n,d1,d2,P,p1,p2,"
     "p3,T,map,dtype,seed,rep,t_total_max,crit_rank,crit_role,crit_compute,crit_comm,crit_idle_handoff,"
     "crit_idle_tail,crit_other,prod_compute,prod_comm,prod_idle,cons_compute,cons_comm,cons_idle,pred_words,"
-    "thmA_words,thmB_words";
+    "thmA_words,thmB_words,blas_threads,kernel_threads,cpus_per_rank,cpu_bind";
 
 std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, const std::vector<Sample>& s) {
   const int crit = slowest(s);
@@ -86,11 +110,23 @@ std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, 
     << role_columns(s, Role::consumer) << ',' << p.words << ',' << thm_a_words(p.shape, p.P) << ',';
   if (const double b = thm_b_words(p.shape, p.P); std::isnan(b)) r << "na";
   else r << b;
+  r << ',';
+  if (info.blas_threads < 0) r << "na";
+  else r << info.blas_threads;
+  r << ',' << info.kernel_threads << ',' << info.cpus_per_rank << ',' << info.cpu_bind;
   return r.str();
 }
 
 CsvWriter::CsvWriter(const std::string& path, MPI_Comm comm) : path_(path), active_(!path.empty() && rank_of(comm) == 0) {
-  if (active_ && !std::ifstream(path_).good()) std::ofstream(path_) << csv_header << '\n';
+  int same = 1;  // decided on rank 0, then shared so every rank throws together
+  if (active_) {
+    std::ifstream in(path_);
+    std::string header;
+    if (!in.good() || !std::getline(in, header)) std::ofstream(path_) << csv_header << '\n';
+    else same = header == csv_header;
+  }
+  if (!path.empty()) MPI_Bcast(&same, 1, MPI_INT, 0, comm);
+  require(same, path + " has a different CSV header (older attnbench?): write to a new file");
 }
 
 void CsvWriter::write(const std::string& row) {

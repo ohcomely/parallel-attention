@@ -1,4 +1,5 @@
-// Split 3D (T = 1) and Pipelined Split 3D (T > 1): producers compute S = Q K^T, consumers compute softmax(S) V.
+// Split 3D (T = 1) and Pipelined Split 3D (T > 1): producers compute exp(S - rowmax) for S = Q K^T on their shard,
+// consumers gather it and compute the row sums and exp(S) V.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -51,6 +52,7 @@ class AttnSplit final : public Attention {
       k_ = Mat<float>(L_.b, L_.c1);
       q_ = Mat<float>(L_.a, L_.c1);
       s_ = Mat<float>(L_.a, L_.b);
+      max_.resize(L_.s_rows);
     } else {
       v_blk_ = {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c2, L_.c2};
       v_own_ = Mat<float>(v_blk_.rows, v_blk_.cols);
@@ -61,7 +63,6 @@ class AttnSplit final : public Attention {
         o_own_.emplace_back(L_.a_chunk, L_.c2);
         out_.push_back({b * block_rows_ + i * L_.a + j * L_.a_chunk, L_.a_chunk, k * L_.c2, L_.c2});
       }
-      max_.resize(L_.a);
       sum_.resize(L_.a);
     }
   }
@@ -100,6 +101,7 @@ class AttnSplit final : public Attention {
       }
       pair_.wait(req_[b % 2]);  // shard buffer from block b-2 must be sent before reuse
       g_.ck.reduce_scatter(s_.ptr(), shard.ptr(), shard.size(), Phase::S_rs);
+      softmax_exp(g_.cj, shard.ptr(), L_.s_rows, L_.b, max_, timers_);  // the producer sends exp(S - max)
       req_[b % 2] = pair_.isend(shard.ptr(), shard.size(), partner_, b, Phase::S_handoff);
     }
     for (auto& r : req_) pair_.wait(r);
@@ -116,7 +118,7 @@ class AttnSplit final : public Attention {
         req_[(b + 1) % 2] =
             pair_.irecv(shard_[(b + 1) % 2].ptr(), shard.size(), partner_, b + 1, Phase::S_handoff, true);
       g_.ck.allgather(shard.ptr(), s_.ptr(), shard.size(), Phase::S_ag);
-      softmax_v_reduce(g_.cj, s_, v_, o_partial_, max_, sum_, o_own_[b].ptr(), timers_);
+      softmax_v_reduce(g_.cj, s_, v_, o_partial_, sum_, o_own_[b].ptr(), timers_);
     }
   }
 

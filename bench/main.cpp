@@ -181,6 +181,7 @@ int run(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
+  std::setvbuf(stdout, nullptr, _IOLBF, 0);  // one line per run, visible in Slurm output files as it happens
   int rc = 0;
   try {
     rc = run(argc, argv);
