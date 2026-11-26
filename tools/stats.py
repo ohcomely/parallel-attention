@@ -7,7 +7,7 @@ import statistics
 import sys
 from collections import defaultdict
 
-CONFIG = ("alg", "n", "d1", "d2", "P", "p1", "p2", "p3", "T", "blocks", "map", "dtype")
+CONFIG = ("alg", "n", "d1", "d2", "P", "p1", "p2", "p3", "T", "map", "dtype")
 COMPONENTS = ("crit_compute", "crit_comm", "crit_idle_handoff", "crit_idle_tail", "crit_other")
 
 
@@ -37,7 +37,7 @@ def load(paths):
 def summarize(rows):
     groups = defaultdict(list)
     for r in rows:
-        groups[tuple(r.get(k, "uniform") for k in CONFIG)].append(r)  # blocks: missing in older CSVs
+        groups[tuple(r[k] for k in CONFIG)].append(r)
     out = []
     for key, rs in groups.items():
         s = dict(zip(CONFIG, key))

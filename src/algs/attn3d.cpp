@@ -59,7 +59,7 @@ class Attn3D final : public Attention {
       softmax_exp(g_.cj, s_.ptr(), L_.a, L_.b, max_, t);
     }
     g_.ci.allgather(v_own_.ptr(), v_.ptr(), v_own_.size(), Phase::V);
-    softmax_v_reduce(g_.cj, s_.ptr(), L_.a, L_.b, v_, o_partial_.ptr(), sum_, o_.ptr(), t);
+    softmax_v_reduce(g_.cj, s_, v_, o_partial_, sum_, o_.ptr(), t);
   }
 
   std::vector<OutputPiece> output() const override { return {{out_, o_.ptr()}}; }
@@ -72,7 +72,7 @@ class Attn3D final : public Attention {
   std::vector<float> max_, sum_;
 };
 
-void validate_3d(const Shape& s, Dims g, std::span<const int64_t>) { make_layout3d(s, g, s.n); }
+void validate_3d(const Shape& s, Dims g, int) { make_layout3d(s, g, s.n); }
 double predicted_3d(const Shape& s, Dims g, int) { return words_3d(s, g); }
 std::unique_ptr<Attention> make_3d(const Plan& p, MPI_Comm comm) { return std::make_unique<Attn3D>(p, comm); }
 

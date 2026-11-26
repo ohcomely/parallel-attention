@@ -58,8 +58,6 @@ def load(path):
 
 def is_auto_grid(r):
     """True if the row ran the words-optimal grid (what --grid auto picks); grid-sweep rows are False."""
-    if r.get("blocks", "uniform") != "uniform":  # unequal Split blocks: a variant, analysed separately
-        return False
     if r["alg"] == "ring":  # no grid choice
         return True
     g = best_grid(r["alg"], int(r["n"]), int(r["d1"]), int(r["d2"]), int(r["P"]), int(r["T"]))

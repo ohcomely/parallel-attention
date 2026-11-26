@@ -22,7 +22,6 @@ struct RunInfo {
 RunInfo run_info(MPI_Comm comm);  // collective
 
 extern const char* const csv_header;
-std::string blocks_str(const Plan& p);  // "uniform" or "1;3;3;1" (CSV-safe)
 std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, const std::vector<Sample>& s);
 
 // Appends rows to `path`, writing the header if the file is new (rank 0 only). Refuses a file whose header

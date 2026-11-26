@@ -14,8 +14,7 @@ namespace attn {
 //   softmax_v_reduce: on the gathered exp(S) block: row sums over cj, O_partial = exp(S) V, reduce-scatter over cj
 //                     into o_owned, divide by the row sums. `sum` needs s.rows entries.
 void softmax_exp(Comm& cj, float* shard, int64_t rows, int64_t keys, std::vector<float>& max, Timers& t);
-//                   s is rows x keys (contiguous), o_partial rows x v.cols.
-void softmax_v_reduce(Comm& cj, const float* s, int64_t rows, int64_t keys, const Mat<float>& v, float* o_partial,
+void softmax_v_reduce(Comm& cj, const Mat<float>& s, const Mat<float>& v, Mat<float>& o_partial,
                       std::vector<float>& sum, float* o_owned, Timers& t);
 
 }  // namespace attn

@@ -91,16 +91,6 @@ int main() {
   expect_rejected("3d", main_shape, 4, {.grid = Dims{2, 2, 1}}, "does not accept grid");
   expect_rejected("2d", main_shape, 8, {.grid = Dims{2, 2, 1}}, "needs 4 ranks");
   expect_rejected("2d", main_shape, 8, {.T = 2}, "not pipelined");
-  expect_rejected("2d", main_shape, 8, {.blocks = {1, 2}}, "not pipelined");
-  expect_rejected("split", main_shape, 8, {.T = 3, .blocks = {1, 2}}, "disagree");
-  expect_rejected("split", main_shape, 8, {.blocks = {1, 0}}, "positive");
-  expect_rejected("split", main_shape, 8, {.blocks = {1, 1, 1}}, "no valid split grid");
-  {
-    const Plan b = plan("split", main_shape, 8, {.blocks = {1, 3, 3, 1}});
-    expect(b.T == 4 && b.block_rows == std::vector<int64_t>{2048, 6144, 6144, 2048},
-           "blocks {1,3,3,1}: T = 4, rows n/8 * weights");
-    expect(b.grid.str() == plan("split", main_shape, 8, {.T = 4}).grid.str(), "blocks do not change the grid choice");
-  }
   expect_rejected("split", main_shape, 7, {}, "multiple of 2");
   expect_rejected("split", {12, 4, 4}, 8, {.T = 5}, "no valid split grid");
   expect_rejected("2d", main_shape, 4, {.map = "kjj"}, "permutation");
