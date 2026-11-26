@@ -21,6 +21,7 @@ struct Suite {
   Suite() {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    device_init(MPI_COMM_WORLD);  // before any device work (reference, timer probe), not only in make()
   }
 
   void expect(bool ok, const std::string& what) {
