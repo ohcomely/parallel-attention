@@ -1,5 +1,5 @@
 # Merlin7 CPU, third round: same layout as merlin_cpu2 (16 ranks x 8 cores per node, 4 allocations), new code:
-#  * softmax kernels vectorised and threaded with OpenMP (OMP_NUM_THREADS = 8);
+#  * softmax kernels vectorised and threaded with OpenMP (OMP_NUM_THREADS = 8; removed again afterwards);
 #  * exponentials taken on the S shard (producer side in Split), not p3 times on the gathered block.
 # Every run writes a timeline (first timed repetition) so per-block idle can be checked.
 # The grid sweep at P = 64 / 128 runs the grids next to the words-optimal (auto) one: ties and near-ties in

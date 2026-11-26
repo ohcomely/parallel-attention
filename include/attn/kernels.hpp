@@ -6,7 +6,6 @@ namespace attn {
 
 const char* blas_name();
 int blas_threads();    // threads the BLAS will use, or -1 if unknown (Accelerate)
-int kernel_threads();  // OpenMP threads of the softmax kernels (1 without OpenMP)
 
 template <class T>  // C = alpha * A * B^T + beta * C;  A: m x k, B: n x k
 void gemm_nt(int64_t m, int64_t n, int64_t k, T alpha, const T* A, int64_t lda, const T* B, int64_t ldb, T beta,

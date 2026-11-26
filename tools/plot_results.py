@@ -395,7 +395,7 @@ def fig_timeline(dir_, S, out, ranks=16):
             if int(r["rank"]) >= ranks:
                 continue
             phase, role = r["phase"], r["role"]
-            kind = ("compute" if phase in {"gemm_s", "gemm_o", "exp", "rowmax", "normalize", "softmax", "init"}
+            kind = ("compute" if phase in {"gemm_s", "gemm_o", "exp", "rowmax", "rowsum", "normalize", "softmax", "init"}
                     else "idle" if phase == "S_handoff" and role == "consumer" else "comm")
             t0, t1 = float(r["t_start"]), float(r["t_end"])
             ax.barh(int(r["rank"]), t1 - t0, left=t0, height=0.85, color=PART[kind][1], linewidth=0)

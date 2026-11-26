@@ -14,7 +14,7 @@ namespace attn::bench {
 struct RunInfo {
   std::string job_id, timestamp, machine, mpi, compiler;
   int nodes = 1, ranks_per_node = 1;
-  int blas_threads = -1, kernel_threads = 1;  // per rank (rank 0); -1 = unknown
+  int blas_threads = -1;                      // per rank (rank 0); -1 = unknown
   std::string cpus_per_rank = "na";           // CPUs in each rank's affinity mask: "8", or "min-max" if they differ
   std::string cpu_bind = "na";                // binding policy from the launcher's environment
 };
