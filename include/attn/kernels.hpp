@@ -1,7 +1,8 @@
 #pragma once
 #include <cstdint>
 
-// Local kernels shared by every algorithm. Row-major, raw pointers, explicit leading dimensions.
+// Local kernels shared by every algorithm. Row-major, raw pointers to device memory (attn/device.hpp), explicit
+// leading dimensions. CPU backend: kernels_cpu.cpp; GPU backend: kernels_gpu.cu (asynchronous on the default stream).
 namespace attn {
 
 const char* blas_name();
@@ -35,5 +36,8 @@ void online_rescale(int64_t m, int64_t n, T* max, const T* block_max, T* sum, T*
 
 template <class T>
 void add_inplace(int64_t n, const T* x, T* y);
+
+template <class T>
+void fill(int64_t n, T value, T* x);
 
 }  // namespace attn

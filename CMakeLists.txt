@@ -3,25 +3,38 @@ project(parallel_attention LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 20)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-option(ATTN_GPU "Build the CUDA/cuBLAS path (not implemented yet)" OFF)
+option(ATTN_GPU "Build the CUDA/cuBLAS path (kernels_gpu.cu) instead of the CPU/BLAS path" OFF)
 set(ATTN_MPIEXEC_EXTRA "--oversubscribe" CACHE STRING "Extra mpiexec flags for tests")
 set(ATTN_TEST_RANKS 1 2 4 8 CACHE STRING "Rank counts used by ctest")
 
 find_package(MPI REQUIRED COMPONENTS CXX)
 
-if(APPLE)
+if(ATTN_GPU)
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 90)  # GH200
+  endif()
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  set(KERNEL_SOURCES src/kernels_gpu.cu)
+  set(BLAS_LIBS CUDA::cudart CUDA::cublas)
+  set(BLAS_NAME cuBLAS)
+elseif(APPLE)
   find_library(ACCELERATE Accelerate REQUIRED)
+  set(KERNEL_SOURCES src/kernels_cpu.cpp)
   set(BLAS_LIBS ${ACCELERATE})
   set(BLAS_DEFS ATTN_ACCELERATE ACCELERATE_NEW_LAPACK)
   set(BLAS_NAME Accelerate)
 else()
   set(BLA_VENDOR OpenBLAS)
   find_package(BLAS REQUIRED)
+  set(KERNEL_SOURCES src/kernels_cpu.cpp)
   set(BLAS_LIBS ${BLAS_LIBRARIES})
   set(BLAS_NAME OpenBLAS)
   # FindBLAS gives no include directory; look for cblas.h next to the library (e.g. <prefix>/lib64 -> <prefix>/include).
@@ -29,6 +42,16 @@ else()
   get_filename_component(BLAS_LIB_DIR "${BLAS_FIRST_LIB}" DIRECTORY)
   find_path(CBLAS_INCLUDE_DIR cblas.h HINTS "${BLAS_LIB_DIR}/../include" PATH_SUFFIXES openblas REQUIRED)
 endif()
+
+# Local kernels and device memory (one backend, no MPI), then the distributed-attention library on top.
+add_library(attn_kernels ${KERNEL_SOURCES})
+target_include_directories(attn_kernels PUBLIC include)
+if(CBLAS_INCLUDE_DIR)
+  target_include_directories(attn_kernels PRIVATE ${CBLAS_INCLUDE_DIR})
+endif()
+target_link_libraries(attn_kernels PUBLIC ${BLAS_LIBS})
+target_compile_definitions(attn_kernels PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
+target_compile_options(attn_kernels PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>)
 
 # Library: distributed attention (include/attn, src).
 add_library(attn
@@ -39,17 +62,12 @@ add_library(attn
   src/grid.cpp
   src/layout.cpp
   src/timers.cpp
-  src/kernels_cpu.cpp
   src/algs/attn3d.cpp
   src/algs/split.cpp
   src/algs/ring.cpp
   src/algs/softmax_v.cpp)
 target_include_directories(attn PUBLIC include PRIVATE src)
-if(CBLAS_INCLUDE_DIR)
-  target_include_directories(attn PRIVATE ${CBLAS_INCLUDE_DIR})
-endif()
-target_link_libraries(attn PUBLIC MPI::MPI_CXX ${BLAS_LIBS})
-target_compile_definitions(attn PRIVATE ${BLAS_DEFS} ATTN_BLAS_NAME="${BLAS_NAME}")
+target_link_libraries(attn PUBLIC attn_kernels MPI::MPI_CXX)
 target_compile_options(attn PRIVATE -Wall -Wextra)
 
 # Benchmark harness for the paper: generated inputs, fp64 reference, measurement protocol, CSV output.
@@ -70,6 +88,9 @@ enable_testing()
 add_executable(test_costmodel tests/test_costmodel.cpp)
 target_link_libraries(test_costmodel PRIVATE attn_bench)
 add_test(NAME test_costmodel COMMAND test_costmodel)
+add_executable(test_kernels tests/test_kernels.cpp)
+target_link_libraries(test_kernels PRIVATE attn_kernels)
+add_test(NAME test_kernels COMMAND test_kernels)
 
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)

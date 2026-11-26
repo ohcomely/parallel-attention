@@ -38,28 +38,28 @@ class Comm {
 
   template <class T>
   void allgather(const T* send, T* recv, int64_t count, Phase ph) {
-    const double t0 = now();
+    const double t0 = start();
     MPI_Allgather(send, to_int(count), mpi_type<T>(), recv, to_int(count), mpi_type<T>(), comm_);
     finish(ph, t0, double(size_ - 1) * count);
   }
 
   template <class T>
   void reduce_scatter(const T* send, T* recv, int64_t count, Phase ph) {
-    const double t0 = now();
+    const double t0 = start();
     MPI_Reduce_scatter_block(send, recv, to_int(count), mpi_type<T>(), MPI_SUM, comm_);
     finish(ph, t0, double(size_ - 1) * count);
   }
 
   template <class T>
   void allreduce(T* buf, int64_t count, Op op, Phase ph) {
-    const double t0 = now();
+    const double t0 = start();
     MPI_Allreduce(MPI_IN_PLACE, buf, to_int(count), mpi_type<T>(), op == Op::max ? MPI_MAX : MPI_SUM, comm_);
     finish(ph, t0, 2.0 * (size_ - 1) / size_ * count);
   }
 
   template <class T>
   Request isend(const T* buf, int64_t count, int dest, int tag, Phase ph) {
-    const double t0 = now();
+    const double t0 = start();
     Request r{MPI_REQUEST_NULL, ph, false};
     MPI_Isend(buf, to_int(count), mpi_type<T>(), dest, tag, comm_, &r.handle);
     finish(ph, t0, 0);
@@ -68,7 +68,7 @@ class Comm {
 
   template <class T>
   Request irecv(T* buf, int64_t count, int src, int tag, Phase ph, bool idle_on_wait) {
-    const double t0 = now();
+    const double t0 = start();
     Request r{MPI_REQUEST_NULL, ph, idle_on_wait};
     MPI_Irecv(buf, to_int(count), mpi_type<T>(), src, tag, comm_, &r.handle);
     finish(ph, t0, double(count));
@@ -79,13 +79,18 @@ class Comm {
 
   template <class T>
   void sendrecv(const T* send, int64_t send_count, int dest, T* recv, int64_t recv_count, int src, Phase ph) {
-    const double t0 = now();
+    const double t0 = start();
     MPI_Sendrecv(send, to_int(send_count), mpi_type<T>(), dest, 0, recv, to_int(recv_count), mpi_type<T>(), src, 0,
                  comm_, MPI_STATUS_IGNORE);
     finish(ph, t0, double(recv_count));
   }
 
  private:
+  // Device buffers must be complete before MPI reads them (no-op after a Timed scope, which already synchronised).
+  static double start() {
+    device_sync();
+    return now();
+  }
   void finish(Phase ph, double t0, double words, bool idle = false);
 
   MPI_Comm comm_ = MPI_COMM_NULL;

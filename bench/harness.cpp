@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "attn/device.hpp"
+
 namespace attn::bench {
 
 void run_timed(Attention& alg, MPI_Comm comm) {
@@ -11,6 +13,7 @@ void run_timed(Attention& alg, MPI_Comm comm) {
   const double t0 = now();
   t.origin = t0;
   alg.run();
+  device_sync();
   const double t1 = now();
   t.total = t1 - t0;
   MPI_Barrier(comm);

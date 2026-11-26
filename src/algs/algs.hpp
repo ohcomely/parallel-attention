@@ -1,5 +1,5 @@
 #pragma once
-#include "attn/matrix.hpp"
+#include "attn/device.hpp"
 #include "attn/registry.hpp"
 
 // Registry entries, one per algorithm source file.

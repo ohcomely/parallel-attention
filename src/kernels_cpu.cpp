@@ -1,9 +1,13 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
+#include <new>
 
-#include "attn/kernels.hpp"
 #include "attn/common.hpp"
+#include "attn/device.hpp"
+#include "attn/kernels.hpp"
 
 #ifdef ATTN_ACCELERATE
 #include <Accelerate/Accelerate.h>
@@ -111,6 +115,11 @@ void add_inplace(int64_t n, const T* x, T* y) {
   for (int64_t i = 0; i < n; ++i) y[i] += x[i];
 }
 
+template <class T>
+void fill(int64_t n, T value, T* x) {
+  std::fill(x, x + n, value);
+}
+
 #define ATTN_INSTANTIATE(T)                                                                                    \
   template void gemm_nt<T>(int64_t, int64_t, int64_t, T, const T*, int64_t, const T*, int64_t, T, T*, int64_t); \
   template void gemm_nn<T>(int64_t, int64_t, int64_t, T, const T*, int64_t, const T*, int64_t, T, T*, int64_t); \
@@ -120,9 +129,25 @@ void add_inplace(int64_t n, const T* x, T* y) {
   template void exp_shift_rowsum<T>(int64_t, int64_t, T*, int64_t, const T*, T*);                              \
   template void divide_rows<T>(int64_t, int64_t, T*, int64_t, const T*);                                       \
   template void online_rescale<T>(int64_t, int64_t, T*, const T*, T*, T*, int64_t);                            \
-  template void add_inplace<T>(int64_t, const T*, T*);
+  template void add_inplace<T>(int64_t, const T*, T*);                                                         \
+  template void fill<T>(int64_t, T, T*);
 
 ATTN_INSTANTIATE(float)
 ATTN_INSTANTIATE(double)
+
+// "Device" memory on the CPU path is host memory.
+void* device_alloc(size_t bytes) {
+  if (bytes == 0) return nullptr;
+  void* p = std::malloc(bytes);
+  if (!p) throw std::bad_alloc();
+  return p;
+}
+void device_free(void* p) { std::free(p); }
+void copy_to_device(void* dst, const void* src, size_t bytes) { if (bytes) std::memcpy(dst, src, bytes); }
+void copy_to_host(void* dst, const void* src, size_t bytes) { if (bytes) std::memcpy(dst, src, bytes); }
+void copy_device(void* dst, const void* src, size_t bytes) { if (bytes) std::memcpy(dst, src, bytes); }
+void device_sync() {}
+void select_device(int) {}
+DeviceInfo device_info() { return {"cpu", "na", "na", "na"}; }
 
 }  // namespace attn

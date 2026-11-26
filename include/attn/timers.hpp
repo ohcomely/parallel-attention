@@ -3,6 +3,8 @@
 #include <string_view>
 #include <vector>
 
+#include "attn/device.hpp"
+
 namespace attn {
 
 // Communication phases, used as labels for timers and word counters.
@@ -39,11 +41,15 @@ struct Timers {
   void add_comm(Phase ph, bool idle, double t0, double t1);
 };
 
-// Times a compute scope.
+// Times a compute scope. Waits for the scope's device work before reading the clock, so GPU time is counted here
+// and never leaks into the next communication phase.
 class Timed {
  public:
   Timed(Timers& t, std::string_view label) : t_(t), label_(label), t0_(now()) {}
-  ~Timed() { t_.add_compute(label_, t0_, now()); }
+  ~Timed() {
+    device_sync();
+    t_.add_compute(label_, t0_, now());
+  }
   Timed(const Timed&) = delete;
   Timed& operator=(const Timed&) = delete;
 

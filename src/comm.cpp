@@ -31,7 +31,7 @@ Comm Comm::dup(MPI_Comm comm, Timers& t) {
 }
 
 void Comm::wait(Request& r) {
-  const double t0 = now();
+  const double t0 = start();
   MPI_Wait(&r.handle, MPI_STATUS_IGNORE);
   finish(r.phase, t0, 0, r.idle);
 }

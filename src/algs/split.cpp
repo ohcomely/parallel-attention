@@ -41,29 +41,29 @@ class AttnSplit final : public Attention {
         partner_(split_partner(pair_.rank())),
         g_(make_group_grid(comm, role_, p.grid, p.map, timers_)) {
     const auto [i, j, k] = g_.at;
-    for (auto& s : shard_) s = Mat<float>(L_.s_rows, L_.b);
+    for (auto& s : shard_) s = DeviceMat<float>(L_.s_rows, L_.b);
     if (role_ == Role::producer) {
       k_blk_ = {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c1, L_.c1};
-      k_own_ = Mat<float>(k_blk_.rows, k_blk_.cols);
+      k_own_ = DeviceMat<float>(k_blk_.rows, k_blk_.cols);
       for (int b = 0; b < T_; ++b) {
         q_blk_.push_back({b * block_rows_ + i * L_.a + j * L_.a_chunk, L_.a_chunk, k * L_.c1, L_.c1});
         q_own_.emplace_back(L_.a_chunk, L_.c1);
       }
-      k_ = Mat<float>(L_.b, L_.c1);
-      q_ = Mat<float>(L_.a, L_.c1);
-      s_ = Mat<float>(L_.a, L_.b);
-      max_.resize(L_.s_rows);
+      k_ = DeviceMat<float>(L_.b, L_.c1);
+      q_ = DeviceMat<float>(L_.a, L_.c1);
+      s_ = DeviceMat<float>(L_.a, L_.b);
+      max_ = DeviceMat<float>(L_.s_rows, 1);
     } else {
       v_blk_ = {j * L_.b + i * L_.b_chunk, L_.b_chunk, k * L_.c2, L_.c2};
-      v_own_ = Mat<float>(v_blk_.rows, v_blk_.cols);
-      v_ = Mat<float>(L_.b, L_.c2);
-      s_ = Mat<float>(L_.a, L_.b);
-      o_partial_ = Mat<float>(L_.a, L_.c2);
+      v_own_ = DeviceMat<float>(v_blk_.rows, v_blk_.cols);
+      v_ = DeviceMat<float>(L_.b, L_.c2);
+      s_ = DeviceMat<float>(L_.a, L_.b);
+      o_partial_ = DeviceMat<float>(L_.a, L_.c2);
       for (int b = 0; b < T_; ++b) {
         o_own_.emplace_back(L_.a_chunk, L_.c2);
         out_.push_back({b * block_rows_ + i * L_.a + j * L_.a_chunk, L_.a_chunk, k * L_.c2, L_.c2});
       }
-      sum_.resize(L_.a);
+      sum_ = DeviceMat<float>(L_.a, 1);
     }
   }
 
@@ -101,7 +101,7 @@ class AttnSplit final : public Attention {
       }
       pair_.wait(req_[b % 2]);  // shard buffer from block b-2 must be sent before reuse
       g_.ck.reduce_scatter(s_.ptr(), shard.ptr(), shard.size(), Phase::S_rs);
-      softmax_exp(g_.cj, shard.ptr(), L_.s_rows, L_.b, max_, timers_);  // the producer sends exp(S - max)
+      softmax_exp(g_.cj, shard.ptr(), L_.s_rows, L_.b, max_.ptr(), timers_);  // the producer sends exp(S - max)
       req_[b % 2] = pair_.isend(shard.ptr(), shard.size(), partner_, b, Phase::S_handoff);
     }
     for (auto& r : req_) pair_.wait(r);
@@ -118,7 +118,7 @@ class AttnSplit final : public Attention {
         req_[(b + 1) % 2] =
             pair_.irecv(shard_[(b + 1) % 2].ptr(), shard.size(), partner_, b + 1, Phase::S_handoff, true);
       g_.ck.allgather(shard.ptr(), s_.ptr(), shard.size(), Phase::S_ag);
-      softmax_v_reduce(g_.cj, s_, v_, o_partial_, sum_, o_own_[b].ptr(), timers_);
+      softmax_v_reduce(g_.cj, s_, v_, o_partial_, sum_.ptr(), o_own_[b].ptr(), timers_);
     }
   }
 
@@ -129,13 +129,13 @@ class AttnSplit final : public Attention {
   Role role_;
   int partner_;
   Grid g_;
-  std::array<Mat<float>, 2> shard_;
+  std::array<DeviceMat<float>, 2> shard_;
   std::array<Request, 2> req_;
   Block k_blk_, v_blk_;
   std::vector<Block> q_blk_, out_;
-  Mat<float> k_own_, k_, q_, s_, v_own_, v_, o_partial_;
-  std::vector<Mat<float>> q_own_, o_own_;
-  std::vector<float> max_, sum_;
+  DeviceMat<float> k_own_, k_, q_, s_, v_own_, v_, o_partial_;
+  std::vector<DeviceMat<float>> q_own_, o_own_;
+  DeviceMat<float> max_, sum_;
 };
 
 }  // namespace

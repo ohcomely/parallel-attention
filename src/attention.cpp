@@ -49,10 +49,23 @@ Plan plan(std::string_view alg, Shape s, int P, const Options& o) {
   return {what, s, P, g, o.T, o.map, spec.words(s, g, P)};
 }
 
+void device_init(MPI_Comm comm) {
+  static bool done = false;
+  if (done) return;
+  MPI_Comm node;
+  MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
+  int local;
+  MPI_Comm_rank(node, &local);
+  MPI_Comm_free(&node);
+  select_device(local);
+  done = true;
+}
+
 std::unique_ptr<Attention> make(std::string_view alg, MPI_Comm comm, Shape shape, const Options& opts) {
   int P;
   MPI_Comm_size(comm, &P);
   const Plan p = plan(alg, shape, P, opts);
+  device_init(comm);
   return algorithm(p.alg).make(p, comm);
 }
 

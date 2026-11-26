@@ -20,14 +20,11 @@ class AttnRing final : public Attention {
     k_blk_ = {r0, rows_, 0, d1};
     v_blk_ = {r0, rows_, 0, d2};
     out_ = {r0, rows_, 0, d2};
-    q_ = k_own_ = k_ = k_next_ = Mat<float>(rows_, d1);
-    v_own_ = v_ = v_next_ = Mat<float>(rows_, d2);
-    s_ = Mat<float>(rows_, rows_);
-    o_ = Mat<float>(rows_, d2);
-    max_.resize(rows_);
-    sum_.resize(rows_);
-    block_max_.resize(rows_);
-    block_sum_.resize(rows_);
+    for (auto* m : {&q_, &k_own_, &k_, &k_next_}) *m = DeviceMat<float>(rows_, d1);
+    for (auto* m : {&v_own_, &v_, &v_next_}) *m = DeviceMat<float>(rows_, d2);
+    s_ = DeviceMat<float>(rows_, rows_);
+    o_ = DeviceMat<float>(rows_, d2);
+    for (auto* m : {&max_, &sum_, &block_max_, &block_sum_}) *m = DeviceMat<float>(rows_, 1);
   }
 
   std::vector<InputSlot> inputs() override {
@@ -41,11 +38,11 @@ class AttnRing final : public Attention {
     const float scale = 1.f / std::sqrt(float(d1));
     {
       Timed _(t, "init");
-      k_.data = k_own_.data;
-      v_.data = v_own_.data;
-      std::fill(max_.begin(), max_.end(), -std::numeric_limits<float>::infinity());
-      std::fill(sum_.begin(), sum_.end(), 0.f);
-      std::fill(o_.data.begin(), o_.data.end(), 0.f);
+      copy_device(k_.ptr(), k_own_.ptr(), k_.bytes());
+      copy_device(v_.ptr(), v_own_.ptr(), v_.bytes());
+      fill(rows_, -std::numeric_limits<float>::infinity(), max_.ptr());
+      fill(rows_, 0.f, sum_.ptr());
+      fill(o_.size(), 0.f, o_.ptr());
     }
     for (int step = 0; step < P; ++step) {
       t.block = step;
@@ -55,10 +52,10 @@ class AttnRing final : public Attention {
       }
       {
         Timed _(t, "softmax");
-        row_max(rows_, rows_, s_.ptr(), rows_, block_max_.data());
-        online_rescale(rows_, d2, max_.data(), block_max_.data(), sum_.data(), o_.ptr(), d2);
-        exp_shift_rowsum(rows_, rows_, s_.ptr(), rows_, max_.data(), block_sum_.data());
-        add_inplace(rows_, block_sum_.data(), sum_.data());
+        row_max(rows_, rows_, s_.ptr(), rows_, block_max_.ptr());
+        online_rescale(rows_, d2, max_.ptr(), block_max_.ptr(), sum_.ptr(), o_.ptr(), d2);
+        exp_shift_rowsum(rows_, rows_, s_.ptr(), rows_, max_.ptr(), block_sum_.ptr());
+        add_inplace(rows_, block_sum_.ptr(), sum_.ptr());
       }
       {
         Timed _(t, "gemm_o");
@@ -72,7 +69,7 @@ class AttnRing final : public Attention {
       }
     }
     t.block = -1;
-    { Timed _(t, "normalize"); divide_rows(rows_, d2, o_.ptr(), d2, sum_.data()); }
+    { Timed _(t, "normalize"); divide_rows(rows_, d2, o_.ptr(), d2, sum_.ptr()); }
   }
 
   std::vector<OutputPiece> output() const override { return {{out_, o_.ptr()}}; }
@@ -81,8 +78,8 @@ class AttnRing final : public Attention {
   Comm comm_;
   int64_t rows_;
   Block q_blk_, k_blk_, v_blk_, out_;
-  Mat<float> q_, k_own_, v_own_, k_, v_, k_next_, v_next_, s_, o_;
-  std::vector<float> max_, sum_, block_max_, block_sum_;
+  DeviceMat<float> q_, k_own_, v_own_, k_, v_, k_next_, v_next_, s_, o_;
+  DeviceMat<float> max_, sum_, block_max_, block_sum_;
 };
 
 }  // namespace

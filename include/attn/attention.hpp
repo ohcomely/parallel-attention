@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "attn/common.hpp"
+#include "attn/device.hpp"
 #include "attn/grid.hpp"
 #include "attn/timers.hpp"
 
@@ -48,12 +49,12 @@ const char* name(Array a);
 struct InputSlot {
   Array array;
   Block block;  // which part of the global matrix this rank supplies
-  float* data;  // block.rows x block.cols, row-major
+  float* data;  // block.rows x block.cols, row-major, device memory (see fill_inputs)
 };
 
 struct OutputPiece {
   Block block;  // which part of the global O this rank holds
-  const float* data;
+  const float* data;  // block.rows x block.cols, row-major, device memory (read with copy_to_host)
 };
 
 class Attention {
@@ -83,16 +84,24 @@ class Attention {
   Plan plan_;
 };
 
-// Builds the algorithm on `comm` (P = its size): creates sub-communicators and allocates buffers. Not timed.
+// Selects this rank's device (node-local rank modulo the visible devices). Collective over `comm` on the first call,
+// then a no-op. Called by make(); call it earlier only if device memory is used before make().
+void device_init(MPI_Comm comm);
+
+// Builds the algorithm on `comm` (P = its size): selects the device, creates sub-communicators and allocates
+// buffers. Not timed.
 std::unique_ptr<Attention> make(std::string_view alg, MPI_Comm comm, Shape shape, const Options& opts = {});
 
-// Fills every input slot of `a` with value(array, global_row, global_col).
+// Fills every input slot of `a` with value(array, global_row, global_col): on the host, then copied to the device.
 template <class F>
 void fill_inputs(Attention& a, F&& value) {
-  for (const InputSlot& s : a.inputs())
+  for (const InputSlot& s : a.inputs()) {
+    std::vector<float> host(size_t(s.block.rows * s.block.cols));
     for (int64_t r = 0; r < s.block.rows; ++r)
       for (int64_t c = 0; c < s.block.cols; ++c)
-        s.data[r * s.block.cols + c] = float(value(s.array, s.block.row0 + r, s.block.col0 + c));
+        host[size_t(r * s.block.cols + c)] = float(value(s.array, s.block.row0 + r, s.block.col0 + c));
+    copy_to_device(s.data, host.data(), host.size() * sizeof(float));
+  }
 }
 
 }  // namespace attn

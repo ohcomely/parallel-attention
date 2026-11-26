@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "attn/costmodel.hpp"
+#include "attn/device.hpp"
 #include "attn/kernels.hpp"
 
 #ifdef __linux__
@@ -59,6 +60,9 @@ RunInfo run_info(MPI_Comm comm) {
   MPI_Get_library_version(lib, &len);
   r.mpi = sanitize(std::string(lib).substr(0, std::string(lib).find(',')));
   r.compiler = sanitize(__VERSION__);
+  device_init(comm);
+  r.device = device_info();
+  for (std::string* f : {&r.device.device, &r.device.gpu, &r.device.cuda, &r.device.cublas}) *f = sanitize(*f);
 
   MPI_Comm node;
   MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
@@ -100,8 +104,9 @@ std::string csv_row(const RunInfo& info, const Plan& p, uint64_t seed, int rep, 
   const Sample& x = s[crit];
   std::ostringstream r;
   r << std::setprecision(12);
-  r << info.job_id << ',' << info.timestamp << ',' << info.machine << ",na," << info.nodes << ','
-    << info.ranks_per_node << ',' << info.mpi << ",na,na," << info.compiler << ",cpu," << blas_name() << ','
+  r << info.job_id << ',' << info.timestamp << ',' << info.machine << ',' << info.device.gpu << ',' << info.nodes
+    << ',' << info.ranks_per_node << ',' << info.mpi << ',' << info.device.cuda << ',' << info.device.cublas << ','
+    << info.compiler << ',' << info.device.device << ',' << blas_name() << ','
     << p.alg << ',' << p.shape.n << ',' << p.shape.d1 << ',' << p.shape.d2 << ',' << p.P << ',' << p.grid.p1 << ','
     << p.grid.p2 << ',' << p.grid.p3 << ',' << p.T << ',' << p.map << ",f32," << seed << ',' << rep << ','
     << x.total << ',' << crit << ',' << name(x.role) << ',' << x.compute << ',' << x.comm << ',' << x.idle_handoff
